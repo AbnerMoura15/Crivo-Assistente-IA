@@ -19,11 +19,12 @@ public class PgTokenUsageAdapter implements TokenUsagePort {
 
     @Override
     public long getMonthlyUsage(String username, int yearMonth) {
-        Long result = jdbc.queryForObject(
-                "SELECT COALESCE(tokens_used, 0) FROM user_token_usage " +
-                "WHERE username = ? AND year_month = ?",
-                Long.class, username, yearMonth);
-        return result != null ? result : 0L;
+        // query() retorna lista vazia quando não há linha — queryForObject() lançaria exceção
+        return jdbc.query(
+                "SELECT tokens_used FROM user_token_usage WHERE username = ? AND year_month = ?",
+                (rs, rowNum) -> rs.getLong("tokens_used"),
+                username, yearMonth)
+                .stream().findFirst().orElse(0L);
     }
 
     @Override
