@@ -8,5 +8,6 @@ public enum AuditAction {
     DOCUMENT_DELETE,
     ROLE_CHANGE,
     USER_DEACTIVATE,
-    USER_ACTIVATE
+    USER_ACTIVATE,
+    USER_CREATE
 }

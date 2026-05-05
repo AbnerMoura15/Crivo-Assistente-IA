@@ -4,12 +4,15 @@ import com.ragbot.application.port.out.UserRepositoryPort;
 import com.ragbot.domain.entity.User;
 import com.ragbot.domain.entity.UserRole;
 import com.ragbot.domain.exception.DocumentNotFoundException;
+import com.ragbot.domain.exception.UserAlreadyExistsException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
 import java.util.List;
@@ -30,6 +33,7 @@ class UserServiceTest {
     @Mock
     private UserRepositoryPort userRepository;
 
+    private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4); // custo baixo no teste
     private UserService userService;
 
     private User viewer;
@@ -37,7 +41,7 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository);
+        userService = new UserService(userRepository, passwordEncoder);
         viewer = new User("id-1", "jose", "jose@fab.com", "hash", UserRole.VIEWER, true, Instant.now(), null);
         editor = new User("id-2", "maria", "maria@fab.com", "hash", UserRole.EDITOR, true, Instant.now(), null);
     }
@@ -99,5 +103,42 @@ class UserServiceTest {
         userService.activate("id-3");
 
         verify(userRepository).save(argThat(User::active));
+    }
+
+    @Test
+    @DisplayName("createUser deve salvar usuário com senha hasheada e retornar o criado")
+    void createUserShouldSaveWithHashedPassword() {
+        when(userRepository.existsByUsername("novo")).thenReturn(false);
+        when(userRepository.existsByEmail("novo@fab.com")).thenReturn(false);
+        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        User created = userService.createUser("novo", "novo@fab.com", "senha123", UserRole.VIEWER);
+
+        assertThat(created.username()).isEqualTo("novo");
+        assertThat(created.role()).isEqualTo(UserRole.VIEWER);
+        assertThat(created.active()).isTrue();
+        assertThat(created.passwordHash()).isNotEqualTo("senha123"); // nunca armazenar em texto puro
+        assertThat(passwordEncoder.matches("senha123", created.passwordHash())).isTrue();
+    }
+
+    @Test
+    @DisplayName("createUser deve lançar exceção se username já existe")
+    void createUserShouldThrowWhenUsernameExists() {
+        when(userRepository.existsByUsername("jose")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.createUser("jose", "outro@fab.com", "senha123", UserRole.VIEWER))
+                .isInstanceOf(UserAlreadyExistsException.class)
+                .hasMessageContaining("jose");
+    }
+
+    @Test
+    @DisplayName("createUser deve lançar exceção se email já existe")
+    void createUserShouldThrowWhenEmailExists() {
+        when(userRepository.existsByUsername("novouser")).thenReturn(false);
+        when(userRepository.existsByEmail("jose@fab.com")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.createUser("novouser", "jose@fab.com", "senha123", UserRole.EDITOR))
+                .isInstanceOf(UserAlreadyExistsException.class)
+                .hasMessageContaining("jose@fab.com");
     }
 }

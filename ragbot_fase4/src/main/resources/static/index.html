@@ -201,6 +201,23 @@
   .audit-action.DOCUMENT_DELETE{background:rgba(246,201,14,.12);color:var(--yellow)}
   .audit-action.LOGIN_SUCCESS,.audit-action.USER_ACTIVATE{background:rgba(62,207,142,.12);color:var(--green)}
 
+  /* ── MODAL ── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:900;backdrop-filter:blur(2px)}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:380px;animation:fadeIn .2s ease}
+  .modal h3{font-size:16px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+  .modal .form-group{margin-bottom:14px}
+  .modal .form-group label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:500}
+  .modal .form-group input,.modal .form-group select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:13px;outline:none;transition:border-color .2s}
+  .modal .form-group input:focus,.modal .form-group select:focus{border-color:var(--accent)}
+  .modal-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+  .modal-actions button{padding:9px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:background .15s}
+  .btn-cancel{background:var(--surface2);color:var(--muted);border:1px solid var(--border) !important}
+  .btn-cancel:hover{border-color:var(--accent) !important;color:var(--text)}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-primary:hover{background:#3a67e8}
+  .btn-primary:disabled{background:var(--border);cursor:not-allowed}
+  .field-error{font-size:11px;color:var(--red);margin-top:4px;display:none}
+
   /* ── TOAST ── */
   .toast-container{position:fixed;bottom:70px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:500}
   .toast{padding:9px 14px;border-radius:8px;font-size:12px;animation:slideIn .2s ease;max-width:280px}
@@ -384,7 +401,10 @@
     <div id="view-users" style="display:none;flex-direction:column;flex:1;overflow:hidden">
       <div class="topbar">
         <div class="topbar-title">👥 Gerenciar Usuários</div>
-        <button class="clear-btn" onclick="loadUsers()">↺ Atualizar</button>
+        <div style="display:flex;gap:8px">
+          <button class="clear-btn" style="background:rgba(79,124,255,.12);border-color:var(--accent);color:var(--accent)" onclick="openCreateUserModal()">+ Novo usuário</button>
+          <button class="clear-btn" onclick="loadUsers()">↺ Atualizar</button>
+        </div>
       </div>
       <div class="panel">
         <table class="data-table" id="users-table">
@@ -394,6 +414,40 @@
           </tr></thead>
           <tbody id="users-tbody"></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ── MODAL CRIAR USUÁRIO ── -->
+    <div id="modal-create-user" class="modal-overlay" style="display:none" onclick="closeModalOnOverlay(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <h3>👤 Novo Usuário</h3>
+        <div class="form-group">
+          <label>Nome de usuário</label>
+          <input type="text" id="new-username" placeholder="joao.silva" autocomplete="off"/>
+          <div class="field-error" id="err-username"></div>
+        </div>
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="new-email" placeholder="joao@empresa.com" autocomplete="off"/>
+          <div class="field-error" id="err-email"></div>
+        </div>
+        <div class="form-group">
+          <label>Senha (mín. 6 caracteres)</label>
+          <input type="password" id="new-password" placeholder="••••••••" autocomplete="new-password"/>
+          <div class="field-error" id="err-password"></div>
+        </div>
+        <div class="form-group">
+          <label>Perfil de acesso</label>
+          <select id="new-role">
+            <option value="VIEWER">VIEWER — apenas leitura e chat</option>
+            <option value="EDITOR">EDITOR — upload de documentos</option>
+            <option value="ADMIN">ADMIN — acesso total</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="closeCreateUserModal()">Cancelar</button>
+          <button class="btn-primary" id="btn-create-user" onclick="submitCreateUser()">Criar usuário</button>
+        </div>
       </div>
     </div>
 
@@ -411,7 +465,7 @@
             <option>REGISTER</option>
             <option>DOCUMENT_UPLOAD</option><option>DOCUMENT_DELETE</option>
             <option>ROLE_CHANGE</option>
-            <option>USER_DEACTIVATE</option><option>USER_ACTIVATE</option>
+            <option>USER_DEACTIVATE</option><option>USER_ACTIVATE</option><option>USER_CREATE</option>
           </select>
           <input type="number" id="audit-limit" value="100" min="10" max="500" style="width:80px"/>
           <button onclick="loadAudit()">Buscar</button>
@@ -482,6 +536,9 @@ function doLogout() {
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('login-password').addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeCreateUserModal();
   });
 });
 
@@ -874,6 +931,72 @@ async function loadDashboard() {
       : '<div class="empty-state"><div class="ei">📊</div><p>Nenhuma interação ainda.</p></div>';
   } catch(err) {
     document.getElementById('metrics-grid').innerHTML = '<div style="color:var(--red);font-size:12px">Erro ao carregar métricas.</div>';
+  }
+}
+
+// ══ CRIAR USUÁRIO (modal) ════════════════════════════════════════════════════
+function openCreateUserModal() {
+  ['new-username','new-email','new-password'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('new-role').value = 'VIEWER';
+  ['err-username','err-email','err-password'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none'; el.textContent = '';
+  });
+  document.getElementById('btn-create-user').disabled = false;
+  document.getElementById('modal-create-user').style.display = 'flex';
+  setTimeout(() => document.getElementById('new-username').focus(), 50);
+}
+
+function closeCreateUserModal() {
+  document.getElementById('modal-create-user').style.display = 'none';
+}
+
+function closeModalOnOverlay(e) {
+  if (e.target === document.getElementById('modal-create-user')) closeCreateUserModal();
+}
+
+async function submitCreateUser() {
+  const username = document.getElementById('new-username').value.trim();
+  const email    = document.getElementById('new-email').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role     = document.getElementById('new-role').value;
+  const btn      = document.getElementById('btn-create-user');
+
+  // Validação no front
+  let valid = true;
+  const setErr = (id, msg) => {
+    const el = document.getElementById(id);
+    el.textContent = msg; el.style.display = msg ? 'block' : 'none';
+    if (msg) valid = false;
+  };
+  setErr('err-username', !username ? 'Obrigatório.' : '');
+  setErr('err-email', !email ? 'Obrigatório.' : !email.includes('@') ? 'E-mail inválido.' : '');
+  setErr('err-password', password.length < 6 ? 'Mínimo de 6 caracteres.' : '');
+  if (!valid) return;
+
+  btn.disabled = true; btn.textContent = 'Criando…';
+  try {
+    const res = await fetch(API + '/api/users', {
+      method: 'POST',
+      headers: {'Authorization':'Bearer ' + token, 'Content-Type':'application/json'},
+      body: JSON.stringify({username, email, password, role})
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      const msg = d.message || 'Erro ao criar usuário.';
+      // Tenta mapear para campo específico
+      if (msg.toLowerCase().includes('usuário')) setErr('err-username', msg);
+      else if (msg.toLowerCase().includes('e-mail') || msg.toLowerCase().includes('email')) setErr('err-email', msg);
+      else showToast(msg, 'error');
+      return;
+    }
+    closeCreateUserModal();
+    showToast('Usuário criado com sucesso!', 'success');
+    loadUsers();
+  } catch(err) {
+    showToast('Erro de conexão.', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Criar usuário';
   }
 }
 

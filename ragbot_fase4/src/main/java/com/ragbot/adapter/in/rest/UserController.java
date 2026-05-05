@@ -8,6 +8,11 @@ import com.ragbot.domain.entity.AuditAction;
 import com.ragbot.domain.entity.User;
 import com.ragbot.domain.entity.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -44,16 +49,27 @@ public class UserController {
 
     @GetMapping
     public ResponseEntity<List<UserResponse>> listAll() {
-        List<UserResponse> users = manageUsersUseCase.listAll()
-                .stream()
-                .map(UserResponse::from)
-                .toList();
-        return ResponseEntity.ok(users);
+        return ResponseEntity.ok(
+                manageUsersUseCase.listAll().stream().map(UserResponse::from).toList());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> findById(@PathVariable String id) {
         return ResponseEntity.ok(UserResponse.from(manageUsersUseCase.findById(id)));
+    }
+
+    /** Cria usuário diretamente pelo admin (sem passar pelo fluxo público de registro). */
+    @PostMapping
+    public ResponseEntity<UserResponse> createUser(
+            @Valid @RequestBody CreateUserRequest request,
+            Authentication auth,
+            HttpServletRequest httpRequest) {
+        User created = manageUsersUseCase.createUser(
+                request.username(), request.email(), request.password(), request.role());
+        auditLogService.record(auth.getName(), AuditAction.USER_CREATE, created.id(), "USER",
+                "username=" + created.username() + " role=" + created.role().name(),
+                httpRequest.getRemoteAddr());
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(created));
     }
 
     @PutMapping("/{id}/role")
@@ -97,6 +113,13 @@ public class UserController {
                     u.role().name(), u.active(), u.createdAt(), u.lastLogin());
         }
     }
+
+    record CreateUserRequest(
+            @NotBlank String username,
+            @NotBlank @Email String email,
+            @NotBlank @Size(min = 6, message = "Senha deve ter ao menos 6 caracteres") String password,
+            UserRole role
+    ) {}
 
     record ChangeRoleRequest(UserRole role) {}
 }
