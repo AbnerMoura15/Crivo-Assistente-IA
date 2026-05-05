@@ -6,13 +6,13 @@ import com.ragbot.application.port.out.EmbeddingPort;
 import com.ragbot.application.port.out.LlmPort;
 import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatMessage;
+import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -21,7 +21,6 @@ import java.util.stream.Collectors;
 public class QueryChatService implements QueryChatUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(QueryChatService.class);
-    private static final int MAX_HISTORY_MESSAGES = 6;
 
     private static final String SYSTEM_PROMPT = """
             Você é um assistente inteligente de suporte interno de uma fábrica.
@@ -42,6 +41,7 @@ public class QueryChatService implements QueryChatUseCase {
     private final DocumentStoragePort documentStoragePort;
     private final PiiMaskingService piiMaskingService;
     private final RagObservabilityService observabilityService;
+    private final ChatHistoryService chatHistoryService;
     private final int topK;
 
     public QueryChatService(
@@ -51,6 +51,7 @@ public class QueryChatService implements QueryChatUseCase {
             DocumentStoragePort documentStoragePort,
             PiiMaskingService piiMaskingService,
             RagObservabilityService observabilityService,
+            ChatHistoryService chatHistoryService,
             @Value("${ragbot.retrieval.top-k:2}") int topK) {
         this.embeddingPort = embeddingPort;
         this.vectorStorePort = vectorStorePort;
@@ -58,17 +59,28 @@ public class QueryChatService implements QueryChatUseCase {
         this.documentStoragePort = documentStoragePort;
         this.piiMaskingService = piiMaskingService;
         this.observabilityService = observabilityService;
+        this.chatHistoryService = chatHistoryService;
         this.topK = topK;
     }
 
     @Override
     public ChatResult query(String question, List<ChatMessage> history, String username) {
-        log.info("Pergunta de '{}': {}", username, question);
+        return queryWithSession(question, null, username);
+    }
+
+    @Override
+    public ChatResult queryWithSession(String question, String sessionId, String username) {
+        log.info("Pergunta de '{}' (sessão={}): {}", username, sessionId, question);
+
+        ChatSession session = chatHistoryService.getOrCreateSession(sessionId, username);
+        List<ChatMessage> dbHistory = chatHistoryService.loadRecentMessages(session.id());
 
         if (documentStoragePort.findAll().isEmpty()) {
             String noDocsAnswer = "Nenhum documento foi encontrado. Por favor, faça o upload de documentos primeiro.";
+            chatHistoryService.saveUserMessage(session.id(), question);
+            chatHistoryService.saveAssistantMessage(session.id(), noDocsAnswer);
             String interactionId = observabilityService.recordInteraction(username, question, noDocsAnswer, List.of());
-            return new ChatResult(noDocsAnswer, interactionId);
+            return new ChatResult(noDocsAnswer, interactionId, session.id());
         }
 
         List<Float> queryEmbedding = embeddingPort.embed(question);
@@ -77,11 +89,12 @@ public class QueryChatService implements QueryChatUseCase {
 
         if (relevantChunks.isEmpty()) {
             String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
+            chatHistoryService.saveUserMessage(session.id(), question);
+            chatHistoryService.saveAssistantMessage(session.id(), noChunksAnswer);
             String interactionId = observabilityService.recordInteraction(username, question, noChunksAnswer, List.of());
-            return new ChatResult(noChunksAnswer, interactionId);
+            return new ChatResult(noChunksAnswer, interactionId, session.id());
         }
 
-        // Mascara PII antes de enviar ao LLM (#31)
         String context = relevantChunks.stream()
                 .map(c -> {
                     PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(c.content());
@@ -93,28 +106,31 @@ public class QueryChatService implements QueryChatUseCase {
                 })
                 .collect(Collectors.joining("\n\n---\n\n"));
 
-        List<ChatMessage> conversation = normalizeHistory(history, question);
+        List<ChatMessage> conversation = buildConversation(dbHistory, question);
         String answer = llmPort.complete(SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context, conversation);
 
-        // Registra a interação para observabilidade (#7, #8)
+        chatHistoryService.saveUserMessage(session.id(), question);
+        chatHistoryService.saveAssistantMessage(session.id(), answer);
+
         String interactionId = observabilityService.recordInteraction(username, question, answer, relevantChunks);
 
-        return new ChatResult(answer, interactionId);
+        return new ChatResult(answer, interactionId, session.id());
     }
 
-    private List<ChatMessage> normalizeHistory(List<ChatMessage> history, String question) {
-        List<ChatMessage> recent = history == null ? new ArrayList<>() :
-                new ArrayList<>(history.stream()
-                        .skip(Math.max(0, history.size() - MAX_HISTORY_MESSAGES))
-                        .toList());
-        boolean alreadyHas = !recent.isEmpty()
-                && "user".equalsIgnoreCase(recent.get(recent.size() - 1).role())
-                && recent.get(recent.size() - 1).content().trim().equals(question.trim());
-        if (!alreadyHas) recent.add(ChatMessage.user(question));
-        return recent.stream()
+    private List<ChatMessage> buildConversation(List<ChatMessage> history, String question) {
+        List<ChatMessage> normalized = history.stream()
                 .filter(m -> m.content() != null && !m.content().isBlank())
                 .map(m -> new ChatMessage(normalizeRole(m.role()), m.content().trim(), m.timestamp()))
-                .toList();
+                .collect(Collectors.toList());
+
+        boolean alreadyHasQuestion = !normalized.isEmpty()
+                && "user".equals(normalized.get(normalized.size() - 1).role())
+                && normalized.get(normalized.size() - 1).content().trim().equals(question.trim());
+
+        if (!alreadyHasQuestion) {
+            normalized.add(ChatMessage.user(question));
+        }
+        return normalized;
     }
 
     private String normalizeRole(String role) {

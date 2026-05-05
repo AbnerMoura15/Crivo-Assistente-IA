@@ -71,6 +71,9 @@ public class SecurityConfig {
                 // Gestão de usuários — apenas ADMIN
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
 
+                // Audit log e admin — apenas ADMIN
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                 // Qualquer outra rota exige autenticação
                 .anyRequest().authenticated()
             )

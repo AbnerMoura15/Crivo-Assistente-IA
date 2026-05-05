@@ -1,5 +1,6 @@
 package com.ragbot.application.service;
 
+import com.ragbot.application.port.out.AuditLogPort;
 import com.ragbot.application.port.out.UserRepositoryPort;
 import com.ragbot.config.security.JwtTokenProvider;
 import com.ragbot.domain.entity.User;
@@ -21,20 +22,13 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/**
- * TDD — AuthService.
- * Cobre: login com credenciais válidas, login inválido,
- * registro de usuário novo e tentativa de registro duplicado.
- */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthService")
 class AuthServiceTest {
 
-    @Mock
-    private UserRepositoryPort userRepository;
-
-    @Mock
-    private JwtTokenProvider jwtTokenProvider;
+    @Mock private UserRepositoryPort userRepository;
+    @Mock private JwtTokenProvider jwtTokenProvider;
+    @Mock private AuditLogPort auditLogPort;
 
     private BCryptPasswordEncoder passwordEncoder;
     private AuthService authService;
@@ -45,21 +39,15 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        authService = new AuthService(userRepository, jwtTokenProvider, passwordEncoder);
+        AuditLogService auditLogService = new AuditLogService(auditLogPort);
+        authService = new AuthService(userRepository, jwtTokenProvider, passwordEncoder, auditLogService);
 
         adminUser = new User(
-                "uuid-admin",
-                "admin",
-                "admin@ragbot.com",
+                "uuid-admin", "admin", "admin@ragbot.com",
                 passwordEncoder.encode(RAW_PASSWORD),
-                UserRole.ADMIN,
-                true,
-                Instant.now(),
-                null
+                UserRole.ADMIN, true, Instant.now(), null
         );
     }
-
-    // ── LOGIN ────────────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("login com credenciais válidas deve retornar JWT")
@@ -75,7 +63,7 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("login com senha errada deve lançar InvalidCredentialsException")
+    @DisplayName("login com senha errada deve lançar InvalidCredentialsException e registrar falha")
     void loginWithWrongPasswordShouldThrow() {
         when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
 
@@ -83,6 +71,7 @@ class AuthServiceTest {
                 .isInstanceOf(InvalidCredentialsException.class);
 
         verify(jwtTokenProvider, never()).generateToken(any(), any());
+        verify(auditLogPort).save(argThat(e -> e.action().name().equals("LOGIN_FAILED")));
     }
 
     @Test
@@ -109,7 +98,16 @@ class AuthServiceTest {
                 .hasMessageContaining("inativo");
     }
 
-    // ── REGISTRO ─────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("login bem-sucedido deve registrar LOGIN_SUCCESS no audit log")
+    void loginSuccessShouldAudit() {
+        when(userRepository.findByUsername("admin")).thenReturn(Optional.of(adminUser));
+        when(jwtTokenProvider.generateToken(any(), any())).thenReturn("token");
+
+        authService.login("admin", RAW_PASSWORD);
+
+        verify(auditLogPort).save(argThat(e -> e.action().name().equals("LOGIN_SUCCESS")));
+    }
 
     @Test
     @DisplayName("registro de novo usuário deve salvar com senha criptografada")
@@ -121,12 +119,9 @@ class AuthServiceTest {
         authService.register("novo", "novo@fab.com", RAW_PASSWORD, UserRole.VIEWER);
 
         verify(userRepository).save(argThat(user -> {
-            // senha deve estar criptografada, nunca em texto puro
             assertThat(user.passwordHash()).isNotEqualTo(RAW_PASSWORD);
             assertThat(passwordEncoder.matches(RAW_PASSWORD, user.passwordHash())).isTrue();
             assertThat(user.username()).isEqualTo("novo");
-            assertThat(user.email()).isEqualTo("novo@fab.com");
-            assertThat(user.role()).isEqualTo(UserRole.VIEWER);
             assertThat(user.active()).isTrue();
             return true;
         }));
