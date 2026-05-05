@@ -4,6 +4,7 @@ import com.ragbot.application.port.out.TokenUsagePort;
 import com.ragbot.domain.exception.TokenLimitExceededException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -28,6 +29,7 @@ public class TokenUsageService {
     private final RagConfigService ragConfigService;
 
     /** Construtor principal — usa limite dinâmico do RagConfigService. */
+    @Autowired
     public TokenUsageService(TokenUsagePort port, RagConfigService ragConfigService) {
         this.port            = port;
         this.ragConfigService = ragConfigService;
