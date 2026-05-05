@@ -127,9 +127,10 @@ public class QueryChatService implements QueryChatUseCase {
 
         // Embeda e busca chunks
         List<Float> queryEmbedding = embeddingPort.embed(question);
+        log.info("Embedding gerado: {} dimensões para '{}'",
+                queryEmbedding.size(), question.substring(0, Math.min(50, question.length())));
+
         List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question);
-        log.info("{} chunks após re-ranking (min-score={}, hybrid={})",
-                relevantChunks.size(), minScore, hybridEnabled);
 
         if (relevantChunks.isEmpty()) {
             String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
