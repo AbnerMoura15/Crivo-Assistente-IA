@@ -11,6 +11,7 @@ public interface DocumentStoragePort {
 
     /**
      * Armazena um documento no namespace especificado (#33).
+     * O documento é gravado com processing_status='PROCESSING'.
      * Retorna o ID gerado para o documento.
      */
     String store(String fileName, String mimeType, long sizeBytes,
@@ -22,6 +23,9 @@ public interface DocumentStoragePort {
     }
 
     InputStream retrieve(String documentId);
+
+    /** Busca documento por ID, independente de status. */
+    Optional<Document> findById(String documentId);
 
     /** Lista apenas documentos ACTIVE no namespace informado (#33). */
     List<Document> findByNamespace(String namespaceId);
@@ -41,7 +45,15 @@ public interface DocumentStoragePort {
     /** Marca como SUPERSEDED (substituído por versão mais nova). */
     void supersede(String documentId);
 
-    // ── Namespaces ──────────────────────────────────────────────────────────
+    /**
+     * Atualiza o status de processamento assíncrono (#22).
+     * Só atualiza se o documento ainda estiver ACTIVE (evita escrita em DELETED).
+     *
+     * @param status "READY" ou "FAILED"
+     */
+    void updateProcessingStatus(String documentId, String status);
+
+    // ── Namespaces ──────────────────────────────────────────────────────────────
 
     List<Namespace> findAllNamespaces();
 

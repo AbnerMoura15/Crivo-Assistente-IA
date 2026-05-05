@@ -785,23 +785,66 @@ async function uploadFile(file) {
     showToast('Formato não suportado: ' + file.name, 'error'); return;
   }
   document.getElementById('uploadProgress').style.display = 'block';
-  document.getElementById('progressBar').style.width = '80%';
+  document.getElementById('progressBar').style.width = '60%';
   const form = new FormData(); form.append('file', file);
   try {
     const url = API + '/api/documents?namespaceId=' + encodeURIComponent(currentNamespaceId);
     const res = await fetch(url, {
       method: 'POST', headers: {'Authorization':'Bearer ' + token}, body: form
     });
-    if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+    // 202 Accepted = upload recebido; pipeline assíncrono em andamento
+    if (res.status !== 202 && !res.ok) { const d = await res.json(); throw new Error(d.message); }
     const result = await res.json();
     const versionMsg = result.version > 1 ? ` (v${result.version})` : '';
-    showToast('✓ ' + file.name + ' indexado' + versionMsg + '!', 'success');
+    showToast('⏳ ' + file.name + versionMsg + ' — processando em background…', 'success');
     loadDocuments();
+    // Inicia polling de status (#22)
+    pollProcessingStatus(result.documentId, file.name);
   } catch(err) { showToast('Erro: ' + err.message, 'error'); }
   finally {
     document.getElementById('uploadProgress').style.display = 'none';
     document.getElementById('progressBar').style.width = '0';
   }
+}
+
+// ══ POLLING DE STATUS (#22) ══════════════════════════════════════════════════
+const processingPollers = {};  // documentId → intervalId
+
+function pollProcessingStatus(documentId, fileName) {
+  if (processingPollers[documentId]) return; // já há polling para este doc
+  let attempts = 0;
+  const MAX_ATTEMPTS = 120; // ~3 min com intervalo de 1.5s
+
+  processingPollers[documentId] = setInterval(async () => {
+    attempts++;
+    if (attempts > MAX_ATTEMPTS) {
+      clearInterval(processingPollers[documentId]);
+      delete processingPollers[documentId];
+      showToast('⚠️ Tempo limite de processamento atingido para: ' + fileName, 'error');
+      loadDocuments();
+      return;
+    }
+    try {
+      const res = await fetch(API + '/api/documents/' + documentId + '/status', {
+        headers: {'Authorization':'Bearer ' + token}
+      });
+      if (!res.ok) { clearInterval(processingPollers[documentId]); delete processingPollers[documentId]; return; }
+      const data = await res.json();
+
+      if (data.processingStatus === 'READY') {
+        clearInterval(processingPollers[documentId]);
+        delete processingPollers[documentId];
+        showToast('✅ ' + fileName + ' pronto para consulta!', 'success');
+        loadDocuments();
+      } else if (data.processingStatus === 'FAILED') {
+        clearInterval(processingPollers[documentId]);
+        delete processingPollers[documentId];
+        showToast('❌ Falha ao processar ' + fileName + '. Tente novamente.', 'error');
+        loadDocuments();
+      }
+      // PROCESSING → continua polling
+    } catch(err) { /* ignora erros transientes de rede */ }
+  }, 1500);
 }
 
 // ══ DOCUMENTOS ═══════════════════════════════════════════════════════════════
@@ -825,10 +868,15 @@ function renderDocsSidebar(docs) {
     const vBadge = doc.version > 1
       ? `<span class="version-badge">v${doc.version}</span>`
       : `<span class="version-badge v1">v1</span>`;
+    const statusBadge = doc.processingStatus === 'PROCESSING'
+      ? `<span class="version-badge" style="background:rgba(246,201,14,.15);color:var(--yellow);animation:pulse 1.5s infinite">⏳</span>`
+      : doc.processingStatus === 'FAILED'
+      ? `<span class="version-badge" style="background:rgba(255,107,107,.15);color:var(--red)">✕</span>`
+      : '';
     return `<div class="doc-item">
       <div class="doc-icon ${isPdf?'pdf':'csv'}">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
-        <div class="doc-name" title="${doc.fileName}">${escHtml(doc.fileName)}${vBadge}</div>
+        <div class="doc-name" title="${doc.fileName}">${escHtml(doc.fileName)}${vBadge}${statusBadge}</div>
         <div class="doc-meta">${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
       ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">✕</button>` : ''}

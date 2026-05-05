@@ -31,6 +31,10 @@ ragbot:
     monthly-limit: 100000     # Tokens estimados por usuário/mês (100k)
   storage:
     dir: ./documents
+  async:
+    core-pool-size: ${ASYNC_CORE_POOL:2}    # threads sempre ativas para ingestão
+    max-pool-size: ${ASYNC_MAX_POOL:5}      # máximo de threads simultâneas
+    queue-capacity: ${ASYNC_QUEUE:50}       # uploads enfileirados aguardando thread
   security:
     jwt:
       secret: ${JWT_SECRET:ragbot-secret-key-troque-em-producao-min32!}

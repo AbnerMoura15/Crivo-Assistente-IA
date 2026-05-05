@@ -10,6 +10,7 @@ import com.ragbot.domain.entity.Namespace;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -39,9 +40,10 @@ public class DocumentController {
 
     /**
      * Upload de documento para um namespace (#33).
-     * Se já existir um ACTIVE com o mesmo nome no namespace, cria nova versão (#26).
      *
-     * @param namespaceId namespace de destino (default se omitido)
+     * Retorna HTTP 202 Accepted imediatamente (#22 — ingestão assíncrona).
+     * O pipeline de chunking/embedding roda em background.
+     * Use GET /{id}/status para acompanhar o progresso.
      */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<RestDtos.IngestResponse> upload(
@@ -53,7 +55,7 @@ public class DocumentController {
         log.info("Upload recebido: {} ({} bytes) namespace={}",
                 file.getOriginalFilename(), file.getSize(), namespaceId);
 
-        String docId = ingestUseCase.ingest(
+        IngestDocumentUseCase.IngestResult result = ingestUseCase.ingest(
                 file.getOriginalFilename(),
                 file.getContentType(),
                 file.getInputStream(),
@@ -61,21 +63,33 @@ public class DocumentController {
                 namespaceId
         );
 
-        // Busca versão para incluir na resposta
-        Document created = listUseCase.listAll().stream()
-                .filter(d -> d.id().equals(docId))
-                .findFirst()
-                .orElse(null);
-        int version = created != null ? created.version() : 1;
-
         String actor = auth != null ? auth.getName() : "anônimo";
-        auditLogService.record(actor, AuditAction.DOCUMENT_UPLOAD, docId, "DOCUMENT",
-                "arquivo=" + file.getOriginalFilename() + " v" + version + " ns=" + namespaceId,
+        auditLogService.record(actor, AuditAction.DOCUMENT_UPLOAD, result.documentId(), "DOCUMENT",
+                "arquivo=" + file.getOriginalFilename() + " v" + result.version() + " ns=" + namespaceId,
                 request.getRemoteAddr());
 
-        return ResponseEntity.ok(new RestDtos.IngestResponse(docId,
-                "Documento '" + file.getOriginalFilename() + "' indexado com sucesso (v" + version + ").",
-                version));
+        return ResponseEntity
+                .status(HttpStatus.ACCEPTED)
+                .body(new RestDtos.IngestResponse(
+                        result.documentId(),
+                        "Arquivo '" + file.getOriginalFilename() + "' recebido (v" + result.version()
+                        + "). Processando em background…",
+                        result.version(),
+                        result.processingStatus()
+                ));
+    }
+
+    /**
+     * Consulta o status de processamento assíncrono de um documento (#22).
+     *
+     * Retorna 200 com o status atual (PROCESSING | READY | FAILED).
+     * Retorna 404 se o documento não existir.
+     */
+    @GetMapping("/{id}/status")
+    public ResponseEntity<RestDtos.DocumentStatusResponse> status(@PathVariable String id) {
+        return listUseCase.findById(id)
+                .map(doc -> ResponseEntity.ok(RestDtos.DocumentStatusResponse.from(doc)))
+                .orElse(ResponseEntity.notFound().build());
     }
 
     /**

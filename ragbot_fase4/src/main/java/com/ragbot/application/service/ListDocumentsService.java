@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class ListDocumentsService implements ListDocumentsUseCase {
@@ -35,26 +36,21 @@ public class ListDocumentsService implements ListDocumentsUseCase {
     }
 
     @Override
-    public List<Document> listVersionHistory(String documentId) {
-        // Busca raiz: pode ser o próprio doc (v1) ou o original_document_id
-        List<Document> allActive = storagePort.findAll();
-        Document doc = allActive.stream()
-                .filter(d -> d.id().equals(documentId))
-                .findFirst()
-                .orElseGet(() -> {
-                    // Pode ser uma versão antiga (SUPERSEDED) — busca pelo rootId
-                    List<Document> history = storagePort.findVersionHistory(documentId);
-                    return history.stream()
-                            .filter(d -> d.id().equals(documentId))
-                            .findFirst()
-                            .orElseThrow(() -> new DocumentNotFoundException(documentId));
-                });
+    public Optional<Document> findById(String documentId) {
+        return storagePort.findById(documentId);
+    }
 
+    @Override
+    public List<Document> listVersionHistory(String documentId) {
+        // Tenta via findById (inclui SUPERSEDED)
+        Document doc = storagePort.findById(documentId)
+                .orElseThrow(() -> new DocumentNotFoundException(documentId));
         return storagePort.findVersionHistory(doc.rootId());
     }
 
     @Override
     public void delete(String documentId) {
+        // findAll() retorna apenas ACTIVE — se não encontrado, lança exceção
         boolean exists = storagePort.findAll().stream()
                 .anyMatch(d -> d.id().equals(documentId));
         if (!exists) {

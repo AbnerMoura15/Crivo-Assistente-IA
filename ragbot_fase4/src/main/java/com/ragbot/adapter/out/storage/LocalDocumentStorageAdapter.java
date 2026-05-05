@@ -22,18 +22,23 @@ import java.util.UUID;
 /**
  * Adapter de armazenamento local de documentos.
  *
- * Fase 10 — novas responsabilidades:
- * - store()               → grava namespace_id, version e original_document_id (#33, #26)
- * - findByNamespace()     → filtra por namespace (#33)
- * - findActiveByFileName() → busca versão atual de um arquivo (#26)
- * - findVersionHistory()  → lista todas as versões de um arquivo (#26)
- * - supersede()           → marca status='SUPERSEDED' (versão antiga) (#26)
- * - Namespace CRUD        → criar/listar/deletar namespaces (#33)
+ * Fase 10 — responsabilidades:
+ * - store()                  → grava arquivo em disco e registra com PROCESSING (#22)
+ * - updateProcessingStatus() → atualiza para READY ou FAILED após async (#22)
+ * - findByNamespace()        → filtra por namespace (#33)
+ * - findActiveByFileName()   → busca versão atual de um arquivo (#26)
+ * - findVersionHistory()     → lista todas as versões de um arquivo (#26)
+ * - supersede()              → marca status='SUPERSEDED' (#26)
+ * - Namespace CRUD           → criar/listar/deletar namespaces (#33)
  */
 @Component
 public class LocalDocumentStorageAdapter implements DocumentStoragePort {
 
     private static final Logger log = LoggerFactory.getLogger(LocalDocumentStorageAdapter.class);
+
+    private static final String SELECT_COLS =
+            "SELECT id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
+            "       namespace_id, version_number, original_document_id, processing_status ";
 
     private final Path storageDir;
     private final JdbcTemplate jdbc;
@@ -66,17 +71,18 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
             throw new RuntimeException("Erro ao gravar arquivo: " + fileName, e);
         }
 
+        // Documento inicia como PROCESSING — o worker async atualizará para READY/FAILED
         jdbc.update(
                 "INSERT INTO documents " +
                 "(id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
-                " status, namespace_id, version_number, original_document_id) " +
-                "VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?)",
+                " status, namespace_id, version_number, original_document_id, processing_status) " +
+                "VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 'PROCESSING')",
                 documentId, fileName, mimeType, filePath.toString(),
                 sizeBytes, Timestamp.from(Instant.now()),
                 namespaceId, version, originalDocumentId
         );
 
-        log.info("Documento armazenado: id={} nome={} namespace={} v{}",
+        log.info("Documento armazenado (PROCESSING): id={} nome={} namespace={} v{}",
                 documentId, fileName, namespaceId, version);
         return documentId;
     }
@@ -95,11 +101,18 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
     }
 
     @Override
+    public Optional<Document> findById(String documentId) {
+        List<Document> results = jdbc.query(
+                SELECT_COLS + "FROM documents WHERE id = ?",
+                this::mapRow, documentId
+        );
+        return results.stream().findFirst();
+    }
+
+    @Override
     public List<Document> findByNamespace(String namespaceId) {
         return jdbc.query(
-                "SELECT id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
-                "       namespace_id, version_number, original_document_id " +
-                "FROM documents " +
+                SELECT_COLS + "FROM documents " +
                 "WHERE status = 'ACTIVE' AND namespace_id = ? " +
                 "ORDER BY ingested_at DESC",
                 this::mapRow, namespaceId
@@ -109,9 +122,7 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
     @Override
     public List<Document> findAll() {
         return jdbc.query(
-                "SELECT id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
-                "       namespace_id, version_number, original_document_id " +
-                "FROM documents WHERE status = 'ACTIVE' ORDER BY ingested_at DESC",
+                SELECT_COLS + "FROM documents WHERE status = 'ACTIVE' ORDER BY ingested_at DESC",
                 this::mapRow
         );
     }
@@ -119,9 +130,7 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
     @Override
     public Optional<Document> findActiveByFileName(String fileName, String namespaceId) {
         List<Document> results = jdbc.query(
-                "SELECT id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
-                "       namespace_id, version_number, original_document_id " +
-                "FROM documents " +
+                SELECT_COLS + "FROM documents " +
                 "WHERE file_name = ? AND namespace_id = ? AND status = 'ACTIVE' " +
                 "ORDER BY version_number DESC LIMIT 1",
                 this::mapRow, fileName, namespaceId
@@ -132,9 +141,7 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
     @Override
     public List<Document> findVersionHistory(String rootDocumentId) {
         return jdbc.query(
-                "SELECT id, file_name, mime_type, storage_reference, file_size_bytes, ingested_at, " +
-                "       namespace_id, version_number, original_document_id " +
-                "FROM documents " +
+                SELECT_COLS + "FROM documents " +
                 "WHERE id = ? OR original_document_id = ? " +
                 "ORDER BY version_number DESC",
                 this::mapRow, rootDocumentId, rootDocumentId
@@ -162,6 +169,20 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
         );
         if (updated > 0) {
             log.info("Documento marcado como SUPERSEDED: {}", documentId);
+        }
+    }
+
+    @Override
+    public void updateProcessingStatus(String documentId, String status) {
+        // Só atualiza se o documento ainda for ACTIVE (evita escrita em DELETED/SUPERSEDED)
+        int updated = jdbc.update(
+                "UPDATE documents SET processing_status = ? WHERE id = ? AND status = 'ACTIVE'",
+                status, documentId
+        );
+        if (updated > 0) {
+            log.info("Processing status atualizado: documentId={} status={}", documentId, status);
+        } else {
+            log.warn("updateProcessingStatus sem efeito: doc {} não está ACTIVE", documentId);
         }
     }
 
@@ -235,7 +256,8 @@ public class LocalDocumentStorageAdapter implements DocumentStoragePort {
                 rs.getTimestamp("ingested_at").toInstant(),
                 rs.getString("namespace_id"),
                 rs.getInt("version_number"),
-                rs.getString("original_document_id")
+                rs.getString("original_document_id"),
+                rs.getString("processing_status")
         );
     }
 }

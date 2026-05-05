@@ -40,23 +40,53 @@ public class RestDtos {
         }
     }
 
-    /** Resposta de documento — inclui namespace e versão (#33, #26). */
+    /** Resposta de documento — inclui namespace, versão e status de processamento (#33, #26, #22). */
     public record DocumentResponse(
             String id, String fileName, String mimeType,
             long fileSizeBytes, Instant ingestedAt,
-            String namespaceId, int version, boolean hasHistory
+            String namespaceId, int version, boolean hasHistory, String processingStatus
     ) {
         public static DocumentResponse from(Document doc) {
             return new DocumentResponse(
                     doc.id(), doc.fileName(), doc.mimeType(),
                     doc.fileSizeBytes(), doc.ingestedAt(),
                     doc.namespaceId(), doc.version(),
-                    doc.version() > 1 || doc.originalDocumentId() != null
+                    doc.version() > 1 || doc.originalDocumentId() != null,
+                    doc.processingStatus()
             );
         }
     }
 
-    public record IngestResponse(String documentId, String message, int version) {}
+    /** Resposta do upload assíncrono (#22) — HTTP 202. */
+    public record IngestResponse(
+            String documentId,
+            String message,
+            int version,
+            String processingStatus   // "PROCESSING" enquanto o pipeline roda em background
+    ) {
+        /** Ctor de compatibilidade para testes que não usam processingStatus. */
+        public IngestResponse(String documentId, String message, int version) {
+            this(documentId, message, version, "PROCESSING");
+        }
+    }
+
+    /** Resposta do endpoint GET /api/documents/{id}/status (#22). */
+    public record DocumentStatusResponse(
+            String documentId,
+            String fileName,
+            String processingStatus,
+            String message
+    ) {
+        public static DocumentStatusResponse from(Document doc) {
+            String msg = switch (doc.processingStatus()) {
+                case "PROCESSING" -> "Documento em processamento. Aguarde.";
+                case "READY"      -> "Documento disponível para consulta.";
+                case "FAILED"     -> "Falha no processamento. Tente fazer upload novamente.";
+                default           -> doc.processingStatus();
+            };
+            return new DocumentStatusResponse(doc.id(), doc.fileName(), doc.processingStatus(), msg);
+        }
+    }
 
     public record ErrorResponse(String error, String message) {}
 
