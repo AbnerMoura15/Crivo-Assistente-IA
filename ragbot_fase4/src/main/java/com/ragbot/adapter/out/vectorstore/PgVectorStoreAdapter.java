@@ -77,8 +77,9 @@ public class PgVectorStoreAdapter implements VectorStorePort {
     /**
      * Busca híbrida: score = semanticWeight * similarity + (1-semanticWeight) * ts_rank.
      *
-     * Usa content_tsvector (GENERATED ALWAYS, criado na V8) para evitar to_tsvector em runtime.
-     * plainto_tsquery() converte a query em tsquery sem precisar de operadores especiais.
+     * Calcula tsvector em runtime com 'simple' (universalmente disponível em qualquer
+     * instalação PostgreSQL, sem dependência de dicionários externos).
+     * plainto_tsquery() aceita texto livre sem operadores especiais.
      */
     @Override
     public List<ScoredChunk> findSimilarHybrid(List<Float> queryEmbedding, String keywords,
@@ -89,13 +90,13 @@ public class PgVectorStoreAdapter implements VectorStorePort {
         String sql = """
                 SELECT id, document_id, content, embedding::text, metadata::text,
                        (? * (1.0 - (embedding <=> ?::vector))
-                        + ? * COALESCE(ts_rank(content_tsvector,
-                                       plainto_tsquery('portuguese', ?)), 0.0)) AS score
+                        + ? * COALESCE(ts_rank(to_tsvector('simple', content),
+                                       plainto_tsquery('simple', ?)), 0.0)) AS score
                 FROM chunks
                 WHERE status = 'ACTIVE'
                 ORDER BY (? * (1.0 - (embedding <=> ?::vector))
-                          + ? * COALESCE(ts_rank(content_tsvector,
-                                         plainto_tsquery('portuguese', ?)), 0.0)) DESC
+                          + ? * COALESCE(ts_rank(to_tsvector('simple', content),
+                                         plainto_tsquery('simple', ?)), 0.0)) DESC
                 LIMIT ?
                 """;
 

@@ -177,14 +177,14 @@ public class QueryChatService implements QueryChatUseCase {
     private List<Chunk> retrieveAndRerank(List<Float> queryEmbedding, String question) {
         int fetchK = topK * 3; // busca mais para ter margem no filtro
 
-        List<ScoredChunk> scored = hybridEnabled
-                ? vectorStorePort.findSimilarHybrid(queryEmbedding, question, fetchK, semanticWeight)
-                : vectorStorePort.findSimilar(queryEmbedding, fetchK);
+        List<ScoredChunk> scored = fetchScored(queryEmbedding, question, fetchK);
+
+        log.info("Busca retornou {} candidatos (hybrid={})", scored.size(), hybridEnabled);
 
         // Log scores para diagnóstico de threshold
         scored.forEach(sc -> log.debug(
-                "Chunk '{}...' score={} adjustedScore={} len={}",
-                sc.chunk().content().substring(0, Math.min(40, sc.chunk().content().length())),
+                "  chunk '{}...' score={} adjusted={} len={}",
+                sc.chunk().content().substring(0, Math.min(50, sc.chunk().content().length())).replace("\n", " "),
                 String.format("%.4f", sc.score()),
                 String.format("%.4f", sc.adjustedScore(minChunkLength)),
                 sc.chunk().content().length()));
@@ -197,9 +197,25 @@ public class QueryChatService implements QueryChatUseCase {
                 .map(ScoredChunk::chunk)
                 .collect(Collectors.toList());
 
-        log.info("Re-ranking: {} candidatos → {} chunks (minScore={}, hybrid={})",
-                scored.size(), result.size(), minScore, hybridEnabled);
+        log.info("Re-ranking: {} candidatos → {} aprovados (minScore={})",
+                scored.size(), result.size(), minScore);
         return result;
+    }
+
+    /**
+     * Tenta busca híbrida; se falhar (ex: dicionário 'portuguese' não instalado),
+     * cai automaticamente para busca vetorial pura.
+     */
+    private List<ScoredChunk> fetchScored(List<Float> queryEmbedding, String question, int fetchK) {
+        if (hybridEnabled) {
+            try {
+                return vectorStorePort.findSimilarHybrid(queryEmbedding, question, fetchK, semanticWeight);
+            } catch (Exception e) {
+                log.warn("Busca híbrida falhou ({}), usando vetorial pura como fallback: {}",
+                        e.getClass().getSimpleName(), e.getMessage());
+            }
+        }
+        return vectorStorePort.findSimilar(queryEmbedding, fetchK);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
