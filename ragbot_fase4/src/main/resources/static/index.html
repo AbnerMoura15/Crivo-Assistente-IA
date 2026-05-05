@@ -346,7 +346,10 @@
     <div id="view-session" style="display:none;flex-direction:column;flex:1;overflow:hidden">
       <div class="topbar">
         <div class="topbar-title" id="session-view-title">Conversa</div>
-        <button class="back-btn" onclick="showView('history')">← Voltar</button>
+        <div style="display:flex;gap:8px">
+          <button class="clear-btn" id="continue-session-btn" onclick="continueSession()" style="background:rgba(79,124,255,.12);border-color:var(--accent);color:var(--accent)">▶ Continuar conversa</button>
+          <button class="back-btn" onclick="showView('history')">← Voltar</button>
+        </div>
       </div>
       <div class="messages" id="session-messages"></div>
     </div>
@@ -746,6 +749,8 @@ async function sendFeedback(interactionId, positive, btn) {
 }
 
 // ══ HISTÓRICO (#13) ═════════════════════════════════════════════════════════
+let viewingSessionId = null;  // sessão atualmente aberta no painel de histórico
+
 async function loadHistory() {
   const panel = document.getElementById('history-panel');
   panel.innerHTML = '<div class="empty-state"><div class="ei">🕐</div><p>Carregando…</p></div>';
@@ -756,21 +761,30 @@ async function loadHistory() {
       panel.innerHTML = '<div class="empty-state"><div class="ei">💬</div><p>Nenhuma conversa salva ainda.<br/>Faça sua primeira pergunta no Chat!</p></div>';
       return;
     }
-    panel.innerHTML = `<div class="session-list">${sessions.map(s => `
-      <div class="session-card" onclick="openSession('${s.id}')">
+    panel.innerHTML = `<div class="session-list">${sessions.map(s => {
+      const isActive = s.id === currentSessionId;
+      return `
+      <div class="session-card" onclick="openSession('${s.id}')" style="${isActive ? 'border-color:var(--accent)' : ''}">
         <div class="session-card-header">
-          <span class="session-id">${s.id.slice(0,8)}…</span>
+          <span class="session-id">${s.id.slice(0,8)}… ${isActive ? '<span style="color:var(--green);font-size:9px">● ativa</span>' : ''}</span>
           <span class="session-date">${fmtDateTime(s.lastMessageAt)}</span>
         </div>
-        <div class="session-preview">Clique para ver as mensagens</div>
-      </div>`).join('')}
+        <div class="session-preview">Iniciada em ${fmtDateTime(s.createdAt)} · clique para ver</div>
+      </div>`;
+    }).join('')}
     </div>`;
   } catch(err) { panel.innerHTML = '<div class="empty-state"><div class="ei">⚠️</div><p>Erro ao carregar histórico.</p></div>'; }
 }
 
 async function openSession(sessionId) {
+  viewingSessionId = sessionId;
   showView('session');
   document.getElementById('session-view-title').textContent = 'Sessão ' + sessionId.slice(0,8) + '…';
+  // Destaca botão "Continuar" se for a sessão ativa atual
+  const contBtn = document.getElementById('continue-session-btn');
+  contBtn.textContent = sessionId === currentSessionId ? '● Sessão ativa' : '▶ Continuar conversa';
+  contBtn.style.opacity = sessionId === currentSessionId ? '0.6' : '1';
+
   const msgs = document.getElementById('session-messages');
   msgs.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;font-size:12px">Carregando…</div>';
   try {
@@ -795,6 +809,16 @@ async function openSession(sessionId) {
     });
     msgs.scrollTop = msgs.scrollHeight;
   } catch(err) { msgs.innerHTML = '<div style="color:var(--red);padding:24px;font-size:12px">Erro ao carregar sessão.</div>'; }
+}
+
+function continueSession() {
+  if (!viewingSessionId) return;
+  // Define a sessão do histórico como sessão ativa e vai para o chat
+  currentSessionId = viewingSessionId;
+  sessionStorage.setItem('ragbot_session_' + currentUser.username, currentSessionId);
+  updateSessionChip();
+  showToast('Continuando sessão ' + currentSessionId.slice(0,8) + '…', 'success');
+  showView('chat');
 }
 
 // ══ DASHBOARD (#10) ══════════════════════════════════════════════════════════
