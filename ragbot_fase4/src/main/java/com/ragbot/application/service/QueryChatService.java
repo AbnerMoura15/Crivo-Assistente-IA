@@ -181,13 +181,25 @@ public class QueryChatService implements QueryChatUseCase {
                 ? vectorStorePort.findSimilarHybrid(queryEmbedding, question, fetchK, semanticWeight)
                 : vectorStorePort.findSimilar(queryEmbedding, fetchK);
 
-        return scored.stream()
+        // Log scores para diagnóstico de threshold
+        scored.forEach(sc -> log.debug(
+                "Chunk '{}...' score={} adjustedScore={} len={}",
+                sc.chunk().content().substring(0, Math.min(40, sc.chunk().content().length())),
+                String.format("%.4f", sc.score()),
+                String.format("%.4f", sc.adjustedScore(minChunkLength)),
+                sc.chunk().content().length()));
+
+        List<Chunk> result = scored.stream()
                 .filter(sc -> sc.adjustedScore(minChunkLength) >= minScore)
                 .sorted(Comparator.comparingDouble(
                         (ScoredChunk sc) -> sc.adjustedScore(minChunkLength)).reversed())
                 .limit(topK)
                 .map(ScoredChunk::chunk)
                 .collect(Collectors.toList());
+
+        log.info("Re-ranking: {} candidatos → {} chunks (minScore={}, hybrid={})",
+                scored.size(), result.size(), minScore, hybridEnabled);
+        return result;
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
