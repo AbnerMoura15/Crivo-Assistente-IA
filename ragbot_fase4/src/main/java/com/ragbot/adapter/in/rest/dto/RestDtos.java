@@ -9,22 +9,18 @@ public class RestDtos {
 
     public record ChatRequest(String question, List<MessageDto> history) {}
 
-    public record ChatResponse(String answer) {}
+    // interactionId adicionado (#9) — permite enviar feedback depois
+    public record ChatResponse(String answer, String interactionId) {}
 
     public record MessageDto(String role, String content) {}
 
     public record DocumentResponse(
-            String id,
-            String fileName,
-            String mimeType,
-            long fileSizeBytes,
-            Instant ingestedAt
+            String id, String fileName, String mimeType,
+            long fileSizeBytes, Instant ingestedAt
     ) {
         public static DocumentResponse from(Document doc) {
-            return new DocumentResponse(
-                    doc.id(), doc.fileName(), doc.mimeType(),
-                    doc.fileSizeBytes(), doc.ingestedAt()
-            );
+            return new DocumentResponse(doc.id(), doc.fileName(), doc.mimeType(),
+                    doc.fileSizeBytes(), doc.ingestedAt());
         }
     }
 

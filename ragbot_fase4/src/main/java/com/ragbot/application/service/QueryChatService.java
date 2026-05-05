@@ -33,15 +33,15 @@ public class QueryChatService implements QueryChatUseCase {
             - Seja objetivo, claro e profissional.
             - Quando relevante, mencione qual documento contém a informação.
             - Responda sempre em português do Brasil.
-            - Tokens como [CPF], [EMAIL], [TELEFONE], [VALOR] representam dados pessoais
-              protegidos pela LGPD que foram anonimizados. Trate-os como informação válida.
+            - Tokens como [CPF], [EMAIL], [TELEFONE], [VALOR] são dados protegidos pela LGPD.
             """;
 
     private final EmbeddingPort embeddingPort;
     private final VectorStorePort vectorStorePort;
     private final LlmPort llmPort;
     private final DocumentStoragePort documentStoragePort;
-    private final PiiMaskingService piiMaskingService;  // #31
+    private final PiiMaskingService piiMaskingService;
+    private final RagObservabilityService observabilityService;
     private final int topK;
 
     public QueryChatService(
@@ -50,56 +50,56 @@ public class QueryChatService implements QueryChatUseCase {
             LlmPort llmPort,
             DocumentStoragePort documentStoragePort,
             PiiMaskingService piiMaskingService,
-            @Value("${ragbot.retrieval.top-k:5}") int topK) {
+            RagObservabilityService observabilityService,
+            @Value("${ragbot.retrieval.top-k:2}") int topK) {
         this.embeddingPort = embeddingPort;
         this.vectorStorePort = vectorStorePort;
         this.llmPort = llmPort;
         this.documentStoragePort = documentStoragePort;
         this.piiMaskingService = piiMaskingService;
+        this.observabilityService = observabilityService;
         this.topK = topK;
     }
 
     @Override
-    public String query(String question, List<ChatMessage> history) {
-        log.info("Pergunta recebida: {}", question);
+    public ChatResult query(String question, List<ChatMessage> history, String username) {
+        log.info("Pergunta de '{}': {}", username, question);
 
         if (documentStoragePort.findAll().isEmpty()) {
-            return "Nenhum documento foi encontrado para responder sua pergunta. "
-                    + "Por favor, faça o upload de documentos primeiro.";
+            String noDocsAnswer = "Nenhum documento foi encontrado. Por favor, faça o upload de documentos primeiro.";
+            String interactionId = observabilityService.recordInteraction(username, question, noDocsAnswer, List.of());
+            return new ChatResult(noDocsAnswer, interactionId);
         }
 
-        List<ChatMessage> conversation = normalizeHistory(history, question);
-
-        // Embedding usa texto ORIGINAL (sem mascaramento) — necessário para busca semântica precisa
         List<Float> queryEmbedding = embeddingPort.embed(question);
         List<Chunk> relevantChunks = vectorStorePort.findSimilar(queryEmbedding, topK);
-
         log.info("{} chunks relevantes encontrados", relevantChunks.size());
 
         if (relevantChunks.isEmpty()) {
-            return "Nenhum documento foi encontrado para responder sua pergunta. "
-                    + "Por favor, faça o upload de documentos primeiro.";
+            String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
+            String interactionId = observabilityService.recordInteraction(username, question, noChunksAnswer, List.of());
+            return new ChatResult(noChunksAnswer, interactionId);
         }
 
-        // #31: mascara PII ANTES de enviar para o LLM externo (Groq/Google)
-        // O banco mantém os dados originais — apenas o que vai para fora é mascarado
+        // Mascara PII antes de enviar ao LLM (#31)
         String context = relevantChunks.stream()
                 .map(c -> {
-                    String rawContent = c.content();
-                    PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(rawContent);
-                    if (masked.replacementsCount() > 0) {
-                        log.debug("PII mascarada em chunk do documento '{}': {} substituições",
-                                c.metadata().getOrDefault("source", "?"),
-                                masked.replacementsCount());
-                    }
+                    PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(c.content());
+                    if (masked.replacementsCount() > 0)
+                        log.debug("PII mascarada: {} substituições", masked.replacementsCount());
                     return String.format("[Documento: %s]\n%s",
                             c.metadata().getOrDefault("source", "desconhecido"),
                             masked.maskedText());
                 })
                 .collect(Collectors.joining("\n\n---\n\n"));
 
-        String systemWithContext = SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context;
-        return llmPort.complete(systemWithContext, conversation);
+        List<ChatMessage> conversation = normalizeHistory(history, question);
+        String answer = llmPort.complete(SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context, conversation);
+
+        // Registra a interação para observabilidade (#7, #8)
+        String interactionId = observabilityService.recordInteraction(username, question, answer, relevantChunks);
+
+        return new ChatResult(answer, interactionId);
     }
 
     private List<ChatMessage> normalizeHistory(List<ChatMessage> history, String question) {
@@ -107,13 +107,10 @@ public class QueryChatService implements QueryChatUseCase {
                 new ArrayList<>(history.stream()
                         .skip(Math.max(0, history.size() - MAX_HISTORY_MESSAGES))
                         .toList());
-
         boolean alreadyHas = !recent.isEmpty()
                 && "user".equalsIgnoreCase(recent.get(recent.size() - 1).role())
                 && recent.get(recent.size() - 1).content().trim().equals(question.trim());
-
         if (!alreadyHas) recent.add(ChatMessage.user(question));
-
         return recent.stream()
                 .filter(m -> m.content() != null && !m.content().isBlank())
                 .map(m -> new ChatMessage(normalizeRole(m.role()), m.content().trim(), m.timestamp()))

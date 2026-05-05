@@ -4,6 +4,7 @@ import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.domain.entity.ChatMessage;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,13 +20,21 @@ public class ChatController {
     }
 
     @PostMapping
-    public ResponseEntity<RestDtos.ChatResponse> chat(@RequestBody RestDtos.ChatRequest request) {
+    public ResponseEntity<RestDtos.ChatResponse> chat(
+            @RequestBody RestDtos.ChatRequest request,
+            Authentication auth) {
+
+        String username = auth != null ? auth.getName() : "anônimo";
+
         List<ChatMessage> history = request.history() == null ? List.of() :
                 request.history().stream()
                         .map(m -> new ChatMessage(m.role(), m.content(), java.time.Instant.now()))
                         .toList();
 
-        String answer = queryChatUseCase.query(request.question(), history);
-        return ResponseEntity.ok(new RestDtos.ChatResponse(answer));
+        QueryChatUseCase.ChatResult result = queryChatUseCase.query(
+                request.question(), history, username);
+
+        // Retorna resposta + interactionId para o frontend usar no feedback (#9)
+        return ResponseEntity.ok(new RestDtos.ChatResponse(result.answer(), result.interactionId()));
     }
 }

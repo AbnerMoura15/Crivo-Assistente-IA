@@ -66,6 +66,7 @@ public class SecurityConfig {
 
                 // Chat — todos os perfis autenticados
                 .requestMatchers("/api/chat/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
+                .requestMatchers("/api/feedback/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
 
                 // Gestão de usuários — apenas ADMIN
                 .requestMatchers("/api/users/**").hasRole("ADMIN")

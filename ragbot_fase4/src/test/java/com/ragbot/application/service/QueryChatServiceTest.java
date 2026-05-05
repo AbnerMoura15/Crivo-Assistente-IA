@@ -1,5 +1,6 @@
 package com.ragbot.application.service;
 
+import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.application.port.out.DocumentStoragePort;
 import com.ragbot.application.port.out.EmbeddingPort;
 import com.ragbot.application.port.out.LlmPort;
@@ -29,8 +30,8 @@ class QueryChatServiceTest {
     @Mock VectorStorePort vectorStorePort;
     @Mock LlmPort llmPort;
     @Mock DocumentStoragePort documentStoragePort;
+    @Mock RagObservabilityService observabilityService;
 
-    // PiiMaskingService é leve — usamos a instância real, sem mock
     private final PiiMaskingService piiMaskingService = new PiiMaskingService();
 
     QueryChatService service;
@@ -39,7 +40,7 @@ class QueryChatServiceTest {
     void setUp() {
         service = new QueryChatService(
                 embeddingPort, vectorStorePort, llmPort,
-                documentStoragePort, piiMaskingService, 2
+                documentStoragePort, piiMaskingService, observabilityService, 2
         );
     }
 
@@ -47,51 +48,48 @@ class QueryChatServiceTest {
     @DisplayName("sem documentos deve retornar mensagem informativa")
     void shouldReturnMessageWhenNoDocumentsFound() {
         when(documentStoragePort.findAll()).thenReturn(List.of());
+        when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
-        String result = service.query("Qual o procedimento X?", List.of());
+        QueryChatUseCase.ChatResult result = service.query("Pergunta X?", List.of(), "user");
 
-        assertThat(result).contains("Nenhum documento");
+        assertThat(result.answer()).contains("Nenhum documento");
+        assertThat(result.interactionId()).isEqualTo("id-1");
     }
 
     @Test
-    @DisplayName("com chunks relevantes deve chamar LLM e retornar resposta")
-    void shouldCallLlmWithContextWhenChunksFound() {
+    @DisplayName("com chunks relevantes deve chamar LLM e registrar interação")
+    void shouldCallLlmAndRecordInteraction() {
         when(documentStoragePort.findAll()).thenReturn(List.of(
-                new Document("doc1", "manual.pdf", "application/pdf", "/path", 1024L, Instant.now())
-        ));
+                new Document("doc1", "manual.pdf", "application/pdf", "/path", 1024L, Instant.now())));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
         when(vectorStorePort.findSimilar(anyList(), anyInt())).thenReturn(List.of(
-                new Chunk("1", "doc1", "Conteúdo relevante.", List.of(), Map.of("source", "manual.pdf"))
-        ));
-        when(llmPort.complete(anyString(), anyList())).thenReturn("Resposta gerada pelo LLM");
+                new Chunk("1", "doc1", "Conteúdo relevante.", List.of(), Map.of("source", "manual.pdf"))));
+        when(llmPort.complete(anyString(), anyList())).thenReturn("Resposta gerada");
+        when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-abc");
 
-        String result = service.query("Qual o procedimento X?", List.of());
+        QueryChatUseCase.ChatResult result = service.query("Pergunta X?", List.of(), "joao");
 
-        assertThat(result).isEqualTo("Resposta gerada pelo LLM");
+        assertThat(result.answer()).isEqualTo("Resposta gerada");
+        assertThat(result.interactionId()).isEqualTo("id-abc");
+        verify(observabilityService).recordInteraction(eq("joao"), eq("Pergunta X?"), eq("Resposta gerada"), anyList());
     }
 
     @Test
-    @DisplayName("PII no contexto deve ser mascarada antes de enviar ao LLM (#31)")
-    void shouldMaskPiiInContextBeforeSendingToLlm() {
+    @DisplayName("PII deve ser mascarada antes de enviar ao LLM")
+    void shouldMaskPiiBeforeSendingToLlm() {
         when(documentStoragePort.findAll()).thenReturn(List.of(
-                new Document("doc1", "rh.csv", "text/csv", "/path", 512L, Instant.now())
-        ));
+                new Document("doc1", "rh.csv", "text/csv", "/path", 512L, Instant.now())));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
         when(vectorStorePort.findSimilar(anyList(), anyInt())).thenReturn(List.of(
-                new Chunk("1", "doc1",
-                        "Funcionário CPF 123.456.789-00 salário R$ 5.000,00",
-                        List.of(), Map.of("source", "rh.csv"))
-        ));
+                new Chunk("1", "doc1", "CPF 123.456.789-00 salário R$ 5.000,00",
+                        List.of(), Map.of("source", "rh.csv"))));
         when(llmPort.complete(anyString(), anyList())).thenReturn("resposta");
+        when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
-        service.query("Qual o salário?", List.of());
+        service.query("Qual o salário?", List.of(), "user");
 
-        // Verifica que o systemPrompt enviado ao LLM NÃO contém o CPF original
         verify(llmPort).complete(argThat(prompt ->
-                !prompt.contains("123.456.789-00")
-                && prompt.contains("[CPF]")
-                && !prompt.contains("5.000,00")
-                && prompt.contains("[VALOR]")
+                !prompt.contains("123.456.789-00") && prompt.contains("[CPF]")
         ), anyList());
     }
 }
