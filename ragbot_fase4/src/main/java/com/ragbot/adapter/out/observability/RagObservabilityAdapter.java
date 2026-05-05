@@ -84,6 +84,14 @@ public class RagObservabilityAdapter implements RagObservabilityPort {
         return count != null ? count : 0L;
     }
 
+    @Override
+    public long countWithPositiveFeedback() {
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM rag_interactions WHERE feedback_positive = TRUE",
+                Long.class);
+        return count != null ? count : 0L;
+    }
+
     private RagInteraction mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new RagInteraction(
                 rs.getString("id"),

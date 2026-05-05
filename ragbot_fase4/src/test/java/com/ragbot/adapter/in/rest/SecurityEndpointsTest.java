@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   Anônimo → apenas POST /api/auth/login e POST /api/auth/register
  */
 @WebMvcTest({DocumentController.class, ChatController.class, UserController.class, AuthController.class})
-@Import(TestSecurityConfig.class)
+@Import(TestWebSecurityConfig.class)
 @DisplayName("Controle de Acesso por Perfil")
 class SecurityEndpointsTest {
 

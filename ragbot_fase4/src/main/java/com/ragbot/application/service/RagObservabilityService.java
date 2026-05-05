@@ -80,21 +80,22 @@ public class RagObservabilityService {
 
     /** Retorna métricas agregadas para o dashboard */
     public Map<String, Object> getMetrics() {
-        long total     = observabilityPort.countByClassification("ANSWERED")
-                       + observabilityPort.countByClassification("NOT_FOUND");
-        long answered  = observabilityPort.countByClassification("ANSWERED");
-        long notFound  = observabilityPort.countByClassification("NOT_FOUND");
+        long answered    = observabilityPort.countByClassification("ANSWERED");
+        long notFound    = observabilityPort.countByClassification("NOT_FOUND");
+        long total       = answered + notFound;
+        long posFeedback = observabilityPort.countWithPositiveFeedback();
         long negFeedback = observabilityPort.countWithNegativeFeedback();
 
         double answeredRate = total > 0 ? (double) answered / total * 100 : 0;
 
         return Map.of(
-                "totalInteractions",    total,
-                "answered",             answered,
-                "notFound",             notFound,
-                "answeredRate",         String.format("%.1f%%", answeredRate),
-                "negativeFeedback",     negFeedback,
-                "recentInteractions",   observabilityPort.findRecent(10)
+                "totalInteractions",  total,
+                "answered",           answered,
+                "notFound",           notFound,
+                "answeredRate",       Math.round(answeredRate * 10) / 10.0,
+                "positiveFeedback",   posFeedback,
+                "negativeFeedback",   negFeedback,
+                "recentInteractions", observabilityPort.findRecent(10)
         );
     }
 }
