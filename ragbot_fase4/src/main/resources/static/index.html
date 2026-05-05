@@ -200,6 +200,7 @@
   .audit-action.LOGIN_FAILED,.audit-action.USER_DEACTIVATE{background:rgba(255,107,107,.12);color:var(--red)}
   .audit-action.DOCUMENT_DELETE{background:rgba(246,201,14,.12);color:var(--yellow)}
   .audit-action.LOGIN_SUCCESS,.audit-action.USER_ACTIVATE{background:rgba(62,207,142,.12);color:var(--green)}
+  .audit-action.CONFIG_UPDATE{background:rgba(246,201,14,.12);color:var(--yellow)}
 
   /* ── MODAL ── */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:900;backdrop-filter:blur(2px)}
@@ -235,6 +236,27 @@
   .ns-slug{font-size:10px;font-family:monospace;color:var(--accent)}
   .ns-name{font-size:13px;font-weight:500}
   .ns-default-badge{font-size:9px;background:rgba(62,207,142,.12);color:var(--green);border-radius:99px;padding:1px 8px;font-weight:600}
+
+  /* ── CONFIG IA (#25) ── */
+  .config-section{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+  .config-section-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-family:monospace;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .config-field{margin-bottom:16px}
+  .config-field:last-child{margin-bottom:0}
+  .config-field label{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text);margin-bottom:6px}
+  .config-field label span{font-family:monospace;font-size:13px;color:var(--accent);font-weight:600;min-width:52px;text-align:right}
+  .config-field input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .config-field input[type=number]{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;outline:none;transition:border-color .2s}
+  .config-field input[type=number]:focus{border-color:var(--accent)}
+  .config-field .hint-text{font-size:10px;color:var(--muted);font-family:monospace;margin-top:3px}
+  .config-toggle{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+  .config-toggle label{font-size:12px;color:var(--text)}
+  .toggle-switch{position:relative;width:40px;height:22px;cursor:pointer}
+  .toggle-switch input{opacity:0;width:0;height:0}
+  .toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:99px;transition:.2s}
+  .toggle-slider::before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+  .toggle-switch input:checked + .toggle-slider{background:var(--accent)}
+  .toggle-switch input:checked + .toggle-slider::before{transform:translateX(18px)}
+  .config-save-bar{display:flex;justify-content:flex-end;margin-top:20px;gap:10px}
 
   /* ── TOAST ── */
   .toast-container{position:fixed;bottom:70px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:500}
@@ -319,6 +341,9 @@
       </div>
       <div class="nav-item" id="nav-namespaces" style="display:none" onclick="showView('namespaces')">
         <span class="nav-icon">🗂️</span> Namespaces
+      </div>
+      <div class="nav-item" id="nav-config-ia" style="display:none" onclick="showView('config-ia')">
+        <span class="nav-icon">⚙️</span> Config IA
       </div>
     </div>
 
@@ -496,6 +521,7 @@
             <option>ROLE_CHANGE</option>
             <option>USER_DEACTIVATE</option><option>USER_ACTIVATE</option><option>USER_CREATE</option>
             <option>NAMESPACE_CREATE</option><option>NAMESPACE_DELETE</option>
+            <option>CONFIG_UPDATE</option>
           </select>
           <input type="number" id="audit-limit" value="100" min="10" max="500" style="width:80px"/>
           <button onclick="loadAudit()">Buscar</button>
@@ -541,6 +567,82 @@
         <div class="modal-actions">
           <button class="btn-cancel" onclick="closeCreateNsModal()">Cancelar</button>
           <button class="btn-primary" id="btn-create-ns" onclick="submitCreateNs()">Criar namespace</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CONFIG IA (#25) ── -->
+    <div id="view-config-ia" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="topbar">
+        <div class="topbar-title">⚙️ Configuração do RAG</div>
+        <button class="clear-btn" onclick="loadRagConfig()">↺ Recarregar</button>
+      </div>
+      <div class="panel">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:20px">
+          Ajuste os parâmetros do pipeline de recuperação e geração. As mudanças têm efeito imediato — sem redeploy.
+        </p>
+
+        <!-- Retrieval -->
+        <div class="config-section">
+          <div class="config-section-title">🔍 Retrieval</div>
+
+          <div class="config-field">
+            <label>Top-K (chunks recuperados) <span id="lbl-topK">3</span></label>
+            <input type="range" id="cfg-topK" min="1" max="20" step="1" value="3"
+                   oninput="document.getElementById('lbl-topK').textContent=this.value"/>
+            <div class="hint-text">Quantidade de chunks recuperados por pergunta (1–20)</div>
+          </div>
+
+          <div class="config-field">
+            <label>Score mínimo <span id="lbl-minScore">0.10</span></label>
+            <input type="range" id="cfg-minScore" min="0" max="1" step="0.01" value="0.10"
+                   oninput="document.getElementById('lbl-minScore').textContent=parseFloat(this.value).toFixed(2)"/>
+            <div class="hint-text">Threshold de similaridade — chunks abaixo são descartados (0.0–1.0)</div>
+          </div>
+
+          <div class="config-field">
+            <label>Comprimento mínimo do chunk <span id="lbl-shortChunk">80</span></label>
+            <input type="range" id="cfg-shortChunk" min="10" max="500" step="10" value="80"
+                   oninput="document.getElementById('lbl-shortChunk').textContent=this.value"/>
+            <div class="hint-text">Chunks menores que este valor recebem penalidade no re-ranking (10–500)</div>
+          </div>
+        </div>
+
+        <!-- Busca Híbrida -->
+        <div class="config-section">
+          <div class="config-section-title">⚡ Busca Híbrida</div>
+
+          <div class="config-toggle">
+            <label>Busca híbrida (semântica + BM25)</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cfg-hybrid" checked/>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <div class="config-field" id="semantic-weight-field">
+            <label>Peso semântico <span id="lbl-semWeight">0.85</span></label>
+            <input type="range" id="cfg-semWeight" min="0" max="1" step="0.05" value="0.85"
+                   oninput="document.getElementById('lbl-semWeight').textContent=parseFloat(this.value).toFixed(2)"/>
+            <div class="hint-text">Fração do score vindo da busca vetorial vs BM25 (0 = só BM25, 1 = só vetorial)</div>
+          </div>
+        </div>
+
+        <!-- Tokens -->
+        <div class="config-section">
+          <div class="config-section-title">🪙 Tokens</div>
+          <div class="config-field">
+            <label>Limite mensal de tokens por usuário</label>
+            <input type="number" id="cfg-tokenLimit" min="1000" max="10000000" step="1000" value="100000"/>
+            <div class="hint-text">Estimativa heurística — palavras × 1.3. Exceder retorna HTTP 429.</div>
+          </div>
+        </div>
+
+        <div class="config-save-bar">
+          <button class="clear-btn" onclick="loadRagConfig()">Cancelar alterações</button>
+          <button id="btn-save-config" class="btn-primary" style="padding:9px 24px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none" onclick="saveRagConfig()">
+            💾 Salvar configuração
+          </button>
         </div>
       </div>
     </div>
@@ -624,6 +726,7 @@ function initApp() {
     document.getElementById('nav-users').style.display = 'flex';
     document.getElementById('nav-audit').style.display = 'flex';
     document.getElementById('nav-namespaces').style.display = 'flex';
+    document.getElementById('nav-config-ia').style.display = 'flex';
     document.getElementById('upload-section').style.display = 'block';
   } else if (currentUser.role === 'EDITOR') {
     document.getElementById('upload-section').style.display = 'block';
@@ -637,7 +740,7 @@ function initApp() {
 }
 
 // ══ NAVEGAÇÃO ═══════════════════════════════════════════════════════════════
-const ALL_VIEWS = ['chat','history','session','docs','dashboard','users','audit','namespaces'];
+const ALL_VIEWS = ['chat','history','session','docs','dashboard','users','audit','namespaces','config-ia'];
 
 function showView(view) {
   ALL_VIEWS.forEach(v => {
@@ -659,6 +762,7 @@ function showView(view) {
   if (view === 'history') loadHistory();
   if (view === 'audit') loadAudit();
   if (view === 'namespaces') loadNamespacesView();
+  if (view === 'config-ia') loadRagConfig();
 }
 
 // ══ UPLOAD ══════════════════════════════════════════════════════════════════
@@ -1303,6 +1407,58 @@ async function loadAudit() {
         <td style="font-family:monospace;font-size:11px">${e.ipAddress || '—'}</td>
       </tr>`).join('');
   } catch(err) { showToast('Erro ao carregar auditoria.', 'error'); }
+}
+
+// ══ CONFIG IA (#25) ══════════════════════════════════════════════════════════
+async function loadRagConfig() {
+  try {
+    const res = await fetch(API + '/api/admin/config', {headers: {'Authorization':'Bearer ' + token}});
+    if (!res.ok) { showToast('Erro ao carregar configuração.', 'error'); return; }
+    const c = await res.json();
+    document.getElementById('cfg-topK').value       = c.topK;
+    document.getElementById('lbl-topK').textContent = c.topK;
+    document.getElementById('cfg-minScore').value      = c.minScore;
+    document.getElementById('lbl-minScore').textContent = c.minScore.toFixed(2);
+    document.getElementById('cfg-shortChunk').value       = c.shortChunkLength;
+    document.getElementById('lbl-shortChunk').textContent = c.shortChunkLength;
+    document.getElementById('cfg-hybrid').checked   = c.hybridEnabled;
+    document.getElementById('cfg-semWeight').value       = c.semanticWeight;
+    document.getElementById('lbl-semWeight').textContent = c.semanticWeight.toFixed(2);
+    document.getElementById('cfg-tokenLimit').value = c.monthlyTokenLimit;
+    toggleSemanticWeightVisibility();
+  } catch(err) { showToast('Erro de conexão.', 'error'); }
+}
+
+function toggleSemanticWeightVisibility() {
+  const hybrid = document.getElementById('cfg-hybrid').checked;
+  document.getElementById('semantic-weight-field').style.opacity = hybrid ? '1' : '0.4';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('cfg-hybrid')?.addEventListener('change', toggleSemanticWeightVisibility);
+});
+
+async function saveRagConfig() {
+  const btn = document.getElementById('btn-save-config');
+  btn.disabled = true; btn.textContent = 'Salvando…';
+  const body = {
+    topK:             parseInt(document.getElementById('cfg-topK').value),
+    minScore:         parseFloat(document.getElementById('cfg-minScore').value),
+    shortChunkLength: parseInt(document.getElementById('cfg-shortChunk').value),
+    hybridEnabled:    document.getElementById('cfg-hybrid').checked,
+    semanticWeight:   parseFloat(document.getElementById('cfg-semWeight').value),
+    monthlyTokenLimit:parseInt(document.getElementById('cfg-tokenLimit').value)
+  };
+  try {
+    const res = await fetch(API + '/api/admin/config', {
+      method: 'PUT',
+      headers: {'Authorization':'Bearer ' + token, 'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) { const d = await res.json().catch(()=>({})); showToast(d.message||'Erro ao salvar.', 'error'); return; }
+    showToast('✓ Configuração salva com efeito imediato!', 'success');
+  } catch(err) { showToast('Erro de conexão.', 'error'); }
+  finally { btn.disabled = false; btn.textContent = '💾 Salvar configuração'; }
 }
 
 // ══ UTILS ════════════════════════════════════════════════════════════════════

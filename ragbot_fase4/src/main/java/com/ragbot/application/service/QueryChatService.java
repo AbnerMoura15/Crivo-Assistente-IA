@@ -9,10 +9,10 @@ import com.ragbot.domain.entity.ChatMessage;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import com.ragbot.domain.entity.Namespace;
+import com.ragbot.domain.entity.RagConfig;
 import com.ragbot.domain.entity.ScoredChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -23,10 +23,13 @@ import java.util.stream.Collectors;
 /**
  * Serviço central do pipeline RAG.
  *
+ * Fase 10 (#25 — Config IA via tela):
+ * - Todos os parâmetros de retrieval (topK, minScore, hybridEnabled, semanticWeight)
+ *   são lidos do RagConfigService a cada request, permitindo ajustes em tempo real
+ *   sem redeploy. O cache do RagConfigService garante que não há hit ao banco por msg.
+ *
  * Fase 10 (#33 — Namespaces):
- * - query e queryWithSession aceitam namespaceId para isolar o conhecimento.
- * - fetchScored passa namespaceId para o VectorStorePort.
- * - Verificação de "nenhum documento" escopada ao namespace.
+ * - query e queryWithSession recebem namespaceId para isolar o conhecimento.
  *
  * Fase 8:
  * - Re-ranking heurístico (#28a), busca híbrida (#27), controle de tokens (#4).
@@ -49,23 +52,15 @@ public class QueryChatService implements QueryChatUseCase {
             - Tokens como [CPF], [EMAIL], [TELEFONE], [VALOR] são dados protegidos pela LGPD.
             """;
 
-    private final EmbeddingPort embeddingPort;
-    private final VectorStorePort vectorStorePort;
-    private final LlmPort llmPort;
-    private final DocumentStoragePort documentStoragePort;
-    private final PiiMaskingService piiMaskingService;
+    private final EmbeddingPort          embeddingPort;
+    private final VectorStorePort        vectorStorePort;
+    private final LlmPort                llmPort;
+    private final DocumentStoragePort    documentStoragePort;
+    private final PiiMaskingService      piiMaskingService;
     private final RagObservabilityService observabilityService;
-    private final ChatHistoryService chatHistoryService;
-    private final TokenUsageService tokenUsageService;
-
-    // Retrieval config
-    private final int topK;
-    private final double minScore;
-    private final int minChunkLength;
-
-    // Hybrid search config
-    private final boolean hybridEnabled;
-    private final double semanticWeight;
+    private final ChatHistoryService     chatHistoryService;
+    private final TokenUsageService      tokenUsageService;
+    private final RagConfigService       ragConfigService;   // #25
 
     public QueryChatService(
             EmbeddingPort embeddingPort,
@@ -76,24 +71,16 @@ public class QueryChatService implements QueryChatUseCase {
             RagObservabilityService observabilityService,
             ChatHistoryService chatHistoryService,
             TokenUsageService tokenUsageService,
-            @Value("${ragbot.retrieval.top-k:2}")            int topK,
-            @Value("${ragbot.retrieval.min-score:0.30}")     double minScore,
-            @Value("${ragbot.retrieval.short-chunk-length:80}") int minChunkLength,
-            @Value("${ragbot.retrieval.hybrid.enabled:true}")  boolean hybridEnabled,
-            @Value("${ragbot.retrieval.hybrid.semantic-weight:0.7}") double semanticWeight) {
-        this.embeddingPort = embeddingPort;
-        this.vectorStorePort = vectorStorePort;
-        this.llmPort = llmPort;
-        this.documentStoragePort = documentStoragePort;
-        this.piiMaskingService = piiMaskingService;
+            RagConfigService ragConfigService) {
+        this.embeddingPort        = embeddingPort;
+        this.vectorStorePort      = vectorStorePort;
+        this.llmPort              = llmPort;
+        this.documentStoragePort  = documentStoragePort;
+        this.piiMaskingService    = piiMaskingService;
         this.observabilityService = observabilityService;
-        this.chatHistoryService = chatHistoryService;
-        this.tokenUsageService = tokenUsageService;
-        this.topK = topK;
-        this.minScore = minScore;
-        this.minChunkLength = minChunkLength;
-        this.hybridEnabled = hybridEnabled;
-        this.semanticWeight = semanticWeight;
+        this.chatHistoryService   = chatHistoryService;
+        this.tokenUsageService    = tokenUsageService;
+        this.ragConfigService     = ragConfigService;
     }
 
     @Override
@@ -105,6 +92,8 @@ public class QueryChatService implements QueryChatUseCase {
     @Override
     public ChatResult queryWithSession(String question, String sessionId,
                                        String username, String namespaceId) {
+        // #25 — lê config atual (cache 30s); sem hit ao banco se não mudou
+        RagConfig cfg = ragConfigService.getConfig();
         log.info("Pergunta de '{}' (sessão={} namespace={}): {}", username, sessionId, namespaceId, question);
 
         // #4 — Verifica limite de tokens ANTES de chamar o LLM
@@ -113,7 +102,6 @@ public class QueryChatService implements QueryChatUseCase {
         ChatSession session = chatHistoryService.getOrCreateSession(sessionId, username);
         List<ChatMessage> dbHistory = chatHistoryService.loadRecentMessages(session.id());
 
-        // Verifica se há documentos no namespace ativo
         if (documentStoragePort.findByNamespace(namespaceId).isEmpty()) {
             String noDocsAnswer = "Nenhum documento foi encontrado neste namespace. Por favor, faça o upload de documentos primeiro.";
             chatHistoryService.saveUserMessage(session.id(), question);
@@ -123,12 +111,10 @@ public class QueryChatService implements QueryChatUseCase {
             return new ChatResult(noDocsAnswer, interactionId, session.id());
         }
 
-        // Embeda e busca chunks escopados ao namespace
         List<Float> queryEmbedding = embeddingPort.embed(question);
-        log.info("Embedding gerado: {} dimensões para '{}'",
-                queryEmbedding.size(), question.substring(0, Math.min(50, question.length())));
+        log.info("Embedding gerado: {} dimensões", queryEmbedding.size());
 
-        List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question, namespaceId);
+        List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question, namespaceId, cfg);
 
         if (relevantChunks.isEmpty()) {
             String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
@@ -139,7 +125,6 @@ public class QueryChatService implements QueryChatUseCase {
             return new ChatResult(noChunksAnswer, interactionId, session.id());
         }
 
-        // Monta contexto com PII mascarada
         String context = relevantChunks.stream()
                 .map(c -> {
                     PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(c.content());
@@ -154,7 +139,6 @@ public class QueryChatService implements QueryChatUseCase {
         List<ChatMessage> conversation = buildConversation(dbHistory, question);
         String answer = llmPort.complete(SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context, conversation);
 
-        // Persiste histórico + observabilidade + tokens
         chatHistoryService.saveUserMessage(session.id(), question);
         chatHistoryService.saveAssistantMessage(session.id(), answer);
         String interactionId = observabilityService.recordInteraction(
@@ -164,44 +148,44 @@ public class QueryChatService implements QueryChatUseCase {
         return new ChatResult(answer, interactionId, session.id());
     }
 
-    // ── #28a + #27 — Busca e Re-ranking ──────────────────────────────────────
+    // ── Retrieval + Re-ranking ────────────────────────────────────────────────
 
     private List<Chunk> retrieveAndRerank(List<Float> queryEmbedding, String question,
-                                           String namespaceId) {
-        int fetchK = topK * 3;
-        List<ScoredChunk> scored = fetchScored(queryEmbedding, question, fetchK, namespaceId);
+                                           String namespaceId, RagConfig cfg) {
+        int fetchK = cfg.topK() * 3;
+        List<ScoredChunk> scored = fetchScored(queryEmbedding, question, fetchK, namespaceId, cfg);
 
         log.info("Busca retornou {} candidatos (hybrid={} namespace={})",
-                scored.size(), hybridEnabled, namespaceId);
+                scored.size(), cfg.hybridEnabled(), namespaceId);
 
         scored.forEach(sc -> log.debug(
                 "  chunk '{}...' score={} adjusted={} len={}",
                 sc.chunk().content().substring(0, Math.min(50, sc.chunk().content().length())).replace("\n", " "),
                 String.format("%.4f", sc.score()),
-                String.format("%.4f", sc.adjustedScore(minChunkLength)),
+                String.format("%.4f", sc.adjustedScore(cfg.shortChunkLength())),
                 sc.chunk().content().length()));
 
         List<Chunk> result = scored.stream()
-                .filter(sc -> sc.adjustedScore(minChunkLength) >= minScore)
+                .filter(sc -> sc.adjustedScore(cfg.shortChunkLength()) >= cfg.minScore())
                 .sorted(Comparator.comparingDouble(
-                        (ScoredChunk sc) -> sc.adjustedScore(minChunkLength)).reversed())
-                .limit(topK)
+                        (ScoredChunk sc) -> sc.adjustedScore(cfg.shortChunkLength())).reversed())
+                .limit(cfg.topK())
                 .map(ScoredChunk::chunk)
                 .collect(Collectors.toList());
 
         log.info("Re-ranking: {} candidatos → {} aprovados (minScore={})",
-                scored.size(), result.size(), minScore);
+                scored.size(), result.size(), cfg.minScore());
         return result;
     }
 
     private List<ScoredChunk> fetchScored(List<Float> queryEmbedding, String question,
-                                           int fetchK, String namespaceId) {
-        if (hybridEnabled) {
+                                           int fetchK, String namespaceId, RagConfig cfg) {
+        if (cfg.hybridEnabled()) {
             try {
                 return vectorStorePort.findSimilarHybrid(
-                        queryEmbedding, question, fetchK, semanticWeight, namespaceId);
+                        queryEmbedding, question, fetchK, cfg.semanticWeight(), namespaceId);
             } catch (Exception e) {
-                log.warn("Busca híbrida falhou ({}), usando vetorial pura como fallback: {}",
+                log.warn("Busca híbrida falhou ({}), usando vetorial pura: {}",
                         e.getClass().getSimpleName(), e.getMessage());
             }
         }
@@ -220,9 +204,7 @@ public class QueryChatService implements QueryChatUseCase {
                 && "user".equals(normalized.get(normalized.size() - 1).role())
                 && normalized.get(normalized.size() - 1).content().trim().equals(question.trim());
 
-        if (!alreadyHasQuestion) {
-            normalized.add(ChatMessage.user(question));
-        }
+        if (!alreadyHasQuestion) normalized.add(ChatMessage.user(question));
         return normalized;
     }
 

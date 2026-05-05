@@ -5,12 +5,14 @@ import com.ragbot.application.port.out.ChatHistoryPort;
 import com.ragbot.application.port.out.DocumentStoragePort;
 import com.ragbot.application.port.out.EmbeddingPort;
 import com.ragbot.application.port.out.LlmPort;
+import com.ragbot.application.port.out.RagConfigPort;
 import com.ragbot.application.port.out.TokenUsagePort;
 import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import com.ragbot.domain.entity.Document;
 import com.ragbot.domain.entity.Namespace;
+import com.ragbot.domain.entity.RagConfig;
 import com.ragbot.domain.entity.ScoredChunk;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,16 +64,16 @@ class QueryChatServiceTest {
         // monthly limit = 100_000; current usage = 0 → never throws
         TokenUsageService tokenUsageService = new TokenUsageService(tokenUsagePort, 100_000L);
 
+        // #25 — RagConfigService com mock port (topK=2, minScore=0.0, hybrid=false)
+        RagConfigPort configPort = mock(RagConfigPort.class);
+        when(configPort.load()).thenReturn(new RagConfig(2, 0.0, 80, false, 0.7, 100_000L));
+        RagConfigService ragConfigService = new RagConfigService(configPort);
+
         service = new QueryChatService(
                 embeddingPort, vectorStorePort, llmPort,
                 documentStoragePort, piiMaskingService,
                 observabilityService, chatHistoryService,
-                tokenUsageService,
-                /* topK */           2,
-                /* minScore */       0.0,   // 0.0 → aceita todos no teste
-                /* minChunkLength */ 80,
-                /* hybridEnabled */  false, // usa findSimilar() simples nos testes
-                /* semanticWeight */ 0.7
+                tokenUsageService, ragConfigService
         );
         // sessão padrão para todos os testes
         when(chatHistoryPort.createSession(anyString())).thenReturn(FAKE_SESSION);
