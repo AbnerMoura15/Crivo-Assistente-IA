@@ -8,15 +8,34 @@ import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatMessage;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
+import com.ragbot.domain.entity.ScoredChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
+/**
+ * Serviço central do pipeline RAG.
+ *
+ * Fase 8 — Melhorias de qualidade:
+ * - Re-ranking heurístico (#28a): filtra por score mínimo + penaliza chunks curtos
+ * - Busca híbrida (#27): combina vetorial + BM25 quando habilitado
+ * - Controle de tokens (#4): verifica limite antes e registra uso depois
+ *
+ * Pipeline:
+ * 1. Verifica limite de tokens do usuário
+ * 2. Embeda a pergunta
+ * 3. Busca chunks (vetorial ou híbrida)
+ * 4. Re-ranking: filtra + reordena + limita
+ * 5. Mascara PII no contexto
+ * 6. Chama LLM com contexto + histórico
+ * 7. Persiste no banco + registra tokens
+ */
 @Service
 public class QueryChatService implements QueryChatUseCase {
 
@@ -42,7 +61,16 @@ public class QueryChatService implements QueryChatUseCase {
     private final PiiMaskingService piiMaskingService;
     private final RagObservabilityService observabilityService;
     private final ChatHistoryService chatHistoryService;
+    private final TokenUsageService tokenUsageService;
+
+    // Retrieval config
     private final int topK;
+    private final double minScore;
+    private final int minChunkLength;
+
+    // Hybrid search config
+    private final boolean hybridEnabled;
+    private final double semanticWeight;
 
     public QueryChatService(
             EmbeddingPort embeddingPort,
@@ -52,7 +80,12 @@ public class QueryChatService implements QueryChatUseCase {
             PiiMaskingService piiMaskingService,
             RagObservabilityService observabilityService,
             ChatHistoryService chatHistoryService,
-            @Value("${ragbot.retrieval.top-k:2}") int topK) {
+            TokenUsageService tokenUsageService,
+            @Value("${ragbot.retrieval.top-k:2}")            int topK,
+            @Value("${ragbot.retrieval.min-score:0.30}")     double minScore,
+            @Value("${ragbot.retrieval.short-chunk-length:80}") int minChunkLength,
+            @Value("${ragbot.retrieval.hybrid.enabled:true}")  boolean hybridEnabled,
+            @Value("${ragbot.retrieval.hybrid.semantic-weight:0.7}") double semanticWeight) {
         this.embeddingPort = embeddingPort;
         this.vectorStorePort = vectorStorePort;
         this.llmPort = llmPort;
@@ -60,7 +93,12 @@ public class QueryChatService implements QueryChatUseCase {
         this.piiMaskingService = piiMaskingService;
         this.observabilityService = observabilityService;
         this.chatHistoryService = chatHistoryService;
+        this.tokenUsageService = tokenUsageService;
         this.topK = topK;
+        this.minScore = minScore;
+        this.minChunkLength = minChunkLength;
+        this.hybridEnabled = hybridEnabled;
+        this.semanticWeight = semanticWeight;
     }
 
     @Override
@@ -72,6 +110,9 @@ public class QueryChatService implements QueryChatUseCase {
     public ChatResult queryWithSession(String question, String sessionId, String username) {
         log.info("Pergunta de '{}' (sessão={}): {}", username, sessionId, question);
 
+        // #4 — Verifica limite de tokens ANTES de chamar o LLM
+        tokenUsageService.checkLimit(username);
+
         ChatSession session = chatHistoryService.getOrCreateSession(sessionId, username);
         List<ChatMessage> dbHistory = chatHistoryService.loadRecentMessages(session.id());
 
@@ -79,22 +120,27 @@ public class QueryChatService implements QueryChatUseCase {
             String noDocsAnswer = "Nenhum documento foi encontrado. Por favor, faça o upload de documentos primeiro.";
             chatHistoryService.saveUserMessage(session.id(), question);
             chatHistoryService.saveAssistantMessage(session.id(), noDocsAnswer);
-            String interactionId = observabilityService.recordInteraction(username, question, noDocsAnswer, List.of());
+            String interactionId = observabilityService.recordInteraction(
+                    username, question, noDocsAnswer, List.of());
             return new ChatResult(noDocsAnswer, interactionId, session.id());
         }
 
+        // Embeda e busca chunks
         List<Float> queryEmbedding = embeddingPort.embed(question);
-        List<Chunk> relevantChunks = vectorStorePort.findSimilar(queryEmbedding, topK);
-        log.info("{} chunks relevantes encontrados", relevantChunks.size());
+        List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question);
+        log.info("{} chunks após re-ranking (min-score={}, hybrid={})",
+                relevantChunks.size(), minScore, hybridEnabled);
 
         if (relevantChunks.isEmpty()) {
             String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
             chatHistoryService.saveUserMessage(session.id(), question);
             chatHistoryService.saveAssistantMessage(session.id(), noChunksAnswer);
-            String interactionId = observabilityService.recordInteraction(username, question, noChunksAnswer, List.of());
+            String interactionId = observabilityService.recordInteraction(
+                    username, question, noChunksAnswer, List.of());
             return new ChatResult(noChunksAnswer, interactionId, session.id());
         }
 
+        // Monta contexto com PII mascarada
         String context = relevantChunks.stream()
                 .map(c -> {
                     PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(c.content());
@@ -109,13 +155,42 @@ public class QueryChatService implements QueryChatUseCase {
         List<ChatMessage> conversation = buildConversation(dbHistory, question);
         String answer = llmPort.complete(SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context, conversation);
 
+        // Persiste histórico + observabilidade + tokens
         chatHistoryService.saveUserMessage(session.id(), question);
         chatHistoryService.saveAssistantMessage(session.id(), answer);
-
-        String interactionId = observabilityService.recordInteraction(username, question, answer, relevantChunks);
+        String interactionId = observabilityService.recordInteraction(
+                username, question, answer, relevantChunks);
+        tokenUsageService.record(username, question, answer);
 
         return new ChatResult(answer, interactionId, session.id());
     }
+
+    // ── #28a + #27 — Busca e Re-ranking ──────────────────────────────────────
+
+    /**
+     * Busca chunks (vetorial ou híbrida) e aplica re-ranking:
+     * 1. Busca topK * 3 candidatos (over-fetch para ter margem)
+     * 2. Filtra por score ajustado >= minScore
+     * 3. Reordena por score decrescente
+     * 4. Retorna os topK melhores
+     */
+    private List<Chunk> retrieveAndRerank(List<Float> queryEmbedding, String question) {
+        int fetchK = topK * 3; // busca mais para ter margem no filtro
+
+        List<ScoredChunk> scored = hybridEnabled
+                ? vectorStorePort.findSimilarHybrid(queryEmbedding, question, fetchK, semanticWeight)
+                : vectorStorePort.findSimilar(queryEmbedding, fetchK);
+
+        return scored.stream()
+                .filter(sc -> sc.adjustedScore(minChunkLength) >= minScore)
+                .sorted(Comparator.comparingDouble(
+                        (ScoredChunk sc) -> sc.adjustedScore(minChunkLength)).reversed())
+                .limit(topK)
+                .map(ScoredChunk::chunk)
+                .collect(Collectors.toList());
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────
 
     private List<ChatMessage> buildConversation(List<ChatMessage> history, String question) {
         List<ChatMessage> normalized = history.stream()

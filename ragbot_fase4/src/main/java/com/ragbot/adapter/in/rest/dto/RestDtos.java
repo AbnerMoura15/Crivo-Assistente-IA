@@ -47,4 +47,17 @@ public class RestDtos {
     public record IngestResponse(String documentId, String message) {}
 
     public record ErrorResponse(String error, String message) {}
+
+    /** Resposta do endpoint GET /api/users/me/usage */
+    public record TokenUsageResponse(
+            String username,
+            long tokensUsed,
+            long monthlyLimit,
+            double percentUsed
+    ) {
+        public TokenUsageResponse(String username, long tokensUsed, long monthlyLimit) {
+            this(username, tokensUsed, monthlyLimit,
+                    monthlyLimit > 0 ? Math.round((double) tokensUsed / monthlyLimit * 1000) / 10.0 : 0.0);
+        }
+    }
 }

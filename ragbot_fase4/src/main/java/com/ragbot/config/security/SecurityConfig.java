@@ -69,6 +69,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/chat/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers("/api/feedback/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
 
+                // Uso de tokens — qualquer usuário autenticado pode ver o próprio
+                .requestMatchers("/api/users/me/usage").authenticated()
+
                 // Gestão de usuários — apenas ADMIN
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
 

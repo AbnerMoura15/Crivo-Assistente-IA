@@ -1,7 +1,9 @@
 package com.ragbot.adapter.in.rest;
 
+import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.application.port.in.ManageUsersUseCase;
 import com.ragbot.application.service.AuditLogService;
+import com.ragbot.application.service.TokenUsageService;
 import com.ragbot.domain.entity.AuditAction;
 import com.ragbot.domain.entity.User;
 import com.ragbot.domain.entity.UserRole;
@@ -21,10 +23,23 @@ public class UserController {
 
     private final ManageUsersUseCase manageUsersUseCase;
     private final AuditLogService auditLogService;
+    private final TokenUsageService tokenUsageService;
 
-    public UserController(ManageUsersUseCase manageUsersUseCase, AuditLogService auditLogService) {
+    public UserController(ManageUsersUseCase manageUsersUseCase,
+                          AuditLogService auditLogService,
+                          TokenUsageService tokenUsageService) {
         this.manageUsersUseCase = manageUsersUseCase;
         this.auditLogService = auditLogService;
+        this.tokenUsageService = tokenUsageService;
+    }
+
+    /** Uso de tokens do próprio usuário — acessível por qualquer papel autenticado. */
+    @GetMapping("/me/usage")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<RestDtos.TokenUsageResponse> getMyUsage(Authentication auth) {
+        long used  = tokenUsageService.getCurrentMonthUsage(auth.getName());
+        long limit = tokenUsageService.getMonthlyLimit();
+        return ResponseEntity.ok(new RestDtos.TokenUsageResponse(auth.getName(), used, limit));
     }
 
     @GetMapping

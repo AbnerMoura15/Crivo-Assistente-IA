@@ -4,6 +4,7 @@ import com.ragbot.application.port.in.IngestDocumentUseCase;
 import com.ragbot.application.port.in.ListDocumentsUseCase;
 import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.application.service.AuthService;
+import com.ragbot.application.service.TokenUsageService;
 import com.ragbot.application.service.UserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,7 @@ class SecurityEndpointsTest {
     @MockBean private QueryChatUseCase queryUseCase;
     @MockBean private AuthService authService;
     @MockBean private UserService userService;
+    @MockBean private TokenUsageService tokenUsageService;
 
     // ── Acesso anônimo ────────────────────────────────────────────────────────
 

@@ -3,6 +3,7 @@ package com.ragbot.adapter.in.rest;
 import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.domain.exception.DocumentNotFoundException;
 import com.ragbot.domain.exception.InvalidCredentialsException;
+import com.ragbot.domain.exception.TokenLimitExceededException;
 import com.ragbot.domain.exception.UnsupportedDocumentTypeException;
 import com.ragbot.domain.exception.UserAlreadyExistsException;
 import org.slf4j.Logger;
@@ -54,6 +55,12 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new RestDtos.ErrorResponse("VALIDATION_ERROR", msg));
+    }
+
+    @ExceptionHandler(TokenLimitExceededException.class)
+    public ResponseEntity<RestDtos.ErrorResponse> handleTokenLimit(TokenLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new RestDtos.ErrorResponse("TOKEN_LIMIT_EXCEEDED", e.getMessage()));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)

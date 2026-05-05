@@ -51,7 +51,8 @@ class PiiMaskingServiceTest {
         assertThat(result)
                 .doesNotContain("123.456.789-00")
                 .doesNotContain("987.654.321-00");
-        assertThat(result.split("\\[CPF\\]").length - 1).isEqualTo(2);
+        // split(-1) preserva segmentos vazios no final — evita descarte padrão do Java
+        assertThat(result.split("\\[CPF\\]", -1).length - 1).isEqualTo(2);
     }
 
     // ── CNPJ ─────────────────────────────────────────────────────────────────

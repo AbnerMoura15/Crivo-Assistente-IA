@@ -22,6 +22,13 @@ ragbot:
     overlap: 50
   retrieval:
     top-k: 2
+    min-score: 0.30           # Descarta chunks com similaridade < 30%
+    short-chunk-length: 80    # Penaliza chunks com menos de 80 chars (score * 0.85)
+    hybrid:
+      enabled: true           # Liga busca híbrida vetorial + BM25
+      semantic-weight: 0.7    # 70% vetorial, 30% BM25
+  tokens:
+    monthly-limit: 100000     # Tokens estimados por usuário/mês (100k)
   storage:
     dir: ./documents
   security:

@@ -5,10 +5,12 @@ import com.ragbot.application.port.out.ChatHistoryPort;
 import com.ragbot.application.port.out.DocumentStoragePort;
 import com.ragbot.application.port.out.EmbeddingPort;
 import com.ragbot.application.port.out.LlmPort;
+import com.ragbot.application.port.out.TokenUsagePort;
 import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import com.ragbot.domain.entity.Document;
+import com.ragbot.domain.entity.ScoredChunk;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,7 @@ class QueryChatServiceTest {
     @Mock DocumentStoragePort documentStoragePort;
     @Mock RagObservabilityService observabilityService;
     @Mock ChatHistoryPort chatHistoryPort;
+    @Mock TokenUsagePort tokenUsagePort;
 
     private final PiiMaskingService piiMaskingService = new PiiMaskingService();
 
@@ -49,15 +52,26 @@ class QueryChatServiceTest {
     @BeforeEach
     void setUp() {
         ChatHistoryService chatHistoryService = new ChatHistoryService(chatHistoryPort);
+        // monthly limit = 100_000; current usage = 0 → never throws
+        TokenUsageService tokenUsageService = new TokenUsageService(tokenUsagePort, 100_000L);
+
         service = new QueryChatService(
                 embeddingPort, vectorStorePort, llmPort,
                 documentStoragePort, piiMaskingService,
-                observabilityService, chatHistoryService, 2
+                observabilityService, chatHistoryService,
+                tokenUsageService,
+                /* topK */           2,
+                /* minScore */       0.0,   // 0.0 → aceita todos no teste
+                /* minChunkLength */ 80,
+                /* hybridEnabled */  false, // usa findSimilar() simples nos testes
+                /* semanticWeight */ 0.7
         );
         // sessão padrão para todos os testes
         when(chatHistoryPort.createSession(anyString())).thenReturn(FAKE_SESSION);
         when(chatHistoryPort.findSession(anyString())).thenReturn(Optional.empty());
         when(chatHistoryPort.loadMessages(anyString())).thenReturn(List.of());
+        // uso de tokens = 0 por padrão
+        when(tokenUsagePort.getMonthlyUsage(anyString(), anyInt())).thenReturn(0L);
     }
 
     @Test
@@ -78,11 +92,13 @@ class QueryChatServiceTest {
     @Test
     @DisplayName("com chunks relevantes deve chamar LLM e registrar interação")
     void shouldCallLlmAndRecordInteraction() {
+        Chunk chunk = new Chunk("1", "doc1", "Conteúdo relevante.", List.of(), Map.of("source", "manual.pdf"));
+
         when(documentStoragePort.findAll()).thenReturn(List.of(
                 new Document("doc1", "manual.pdf", "application/pdf", "/path", 1024L, Instant.now())));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
-        when(vectorStorePort.findSimilar(anyList(), anyInt())).thenReturn(List.of(
-                new Chunk("1", "doc1", "Conteúdo relevante.", List.of(), Map.of("source", "manual.pdf"))));
+        when(vectorStorePort.findSimilar(anyList(), anyInt()))
+                .thenReturn(List.of(new ScoredChunk(chunk, 0.9)));
         when(llmPort.complete(anyString(), anyList())).thenReturn("Resposta gerada");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-abc");
 
@@ -113,12 +129,14 @@ class QueryChatServiceTest {
     @Test
     @DisplayName("PII deve ser mascarada antes de enviar ao LLM")
     void shouldMaskPiiBeforeSendingToLlm() {
+        Chunk chunk = new Chunk("1", "doc1", "CPF 123.456.789-00 salário R$ 5.000,00",
+                List.of(), Map.of("source", "rh.csv"));
+
         when(documentStoragePort.findAll()).thenReturn(List.of(
                 new Document("doc1", "rh.csv", "text/csv", "/path", 512L, Instant.now())));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
-        when(vectorStorePort.findSimilar(anyList(), anyInt())).thenReturn(List.of(
-                new Chunk("1", "doc1", "CPF 123.456.789-00 salário R$ 5.000,00",
-                        List.of(), Map.of("source", "rh.csv"))));
+        when(vectorStorePort.findSimilar(anyList(), anyInt()))
+                .thenReturn(List.of(new ScoredChunk(chunk, 0.9)));
         when(llmPort.complete(anyString(), anyList())).thenReturn("resposta");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
