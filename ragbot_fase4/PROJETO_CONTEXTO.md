@@ -1,8 +1,8 @@
 # RAGBot — Contexto do Projeto para Claude
 
 > **USO:** Cole este arquivo no início de cada sessão para economizar tokens.
-> Última atualização: 2026-05-05 — Fase 10 parcial (#33 Namespaces + #26 Versioning + #25 Config IA)
-> Testes: **118 ✅** | Commits: a3c8212 · 3d50ae1 · 25cb09e
+> Última atualização: 2026-05-05 — Fase 10 completa (#33 #26 #25 #22)
+> Testes: **118 ✅** | Commits: a3c8212 · 3d50ae1 · 25cb09e · 393a84d
 
 ---
 
@@ -147,8 +147,9 @@ enum AuditAction { LOGIN_SUCCESS, LOGIN_FAILED, REGISTER,
 | V11 | tabela namespaces + FK namespace_id em documents (#33) |
 | V12 | colunas version_number, original_document_id em documents; status SUPERSEDED (#26) |
 | V13 | tabela rag_config (key/value) + 6 seeds de defaults (#25) |
+| V14 | coluna processing_status (PROCESSING/READY/FAILED) em documents (#22) |
 
-**Próxima migration:** V14
+**Próxima migration:** V15
 
 ---
 
@@ -173,6 +174,7 @@ enum AuditAction { LOGIN_SUCCESS, LOGIN_FAILED, REGISTER,
 | Namespaces | Chunks isolados por namespace_id via JOIN documents; default namespace seed |
 | Versionamento | IngestDocumentService — findActiveByFileName() → supersede() → increment version |
 | Config IA | RagConfigService (cache 30s) → PgRagConfigAdapter → tabela rag_config |
+| Async Ingest | IngestDocumentService → store(PROCESSING) → AsyncIngestWorker(@Async) → READY/FAILED |
 
 ---
 
@@ -262,22 +264,22 @@ cfg.shortChunkLength(); cfg.monthlyTokenLimit();
 
 ## Roadmap — Status
 
-### ✅ Concluído (≈70%)
+### ✅ Concluído (≈80%)
 
-Fases 1–8 completas + #33 Namespaces + #26 Versionamento + #25 Config IA
+Fases 1–8 completas + #33 Namespaces + #26 Versionamento + #25 Config IA + #22 Async Ingest
 
-### ⏳ Próxima sessão — #22 Ingestão Assíncrona
+### ⏳ Próxima sessão — #16 Testcontainers
 
-Upload retorna 202 imediato → chunking/embedding em background thread → status polling.
+Testes de integração com PostgreSQL+pgvector real validando Flyway V1–V14.
 Ver detalhes em **PENDENCIAS.md**.
 
 ### 🔲 Backlog
 
 | # | Item |
 |---|---|
-| #16 | Testcontainers (integração real com pgvector) |
-| #15 | JaCoCo ≥80% |
-| #30 | Multi-tenancy |
+| **#16** | **Testcontainers** (integração real PostgreSQL+pgvector) |
+| **#15** | JaCoCo ≥80% |
+| **#30** | Multi-tenancy |
 
 ---
 
