@@ -12,6 +12,7 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.util.retry.Retry;
@@ -100,6 +101,12 @@ public class GroqLlmAdapter implements LlmPort {
                         .filter(t -> t instanceof RetryableException)
                         .doBeforeRetry(s -> log.warn("Groq retry {}/{}: {}",
                                 s.totalRetries() + 1, maxRetries, s.failure().getMessage())))
+                // Unwrap RetryExhaustedException → expõe a causa original (ex: "429: rate limit")
+                .onErrorMap(Exceptions::isRetryExhausted, t -> {
+                    Throwable cause = t.getCause();
+                    return cause instanceof RuntimeException re ? re
+                            : new RuntimeException("Groq retries esgotados", cause);
+                })
                 .block();
 
         if (response == null || response.choices() == null || response.choices().isEmpty()) {

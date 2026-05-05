@@ -1,5 +1,6 @@
 package com.ragbot.config.security;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -71,12 +72,21 @@ public class SecurityConfig {
                 // Gestão de usuários — apenas ADMIN
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
 
+                // Audit log e admin — apenas ADMIN
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
                 // Qualquer outra rota exige autenticação
                 .anyRequest().authenticated()
             )
 
             // Injeta o filtro JWT antes do filtro padrão de username/password
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+
+            // Retorna 401 (não 403) para requisições sem autenticação
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) ->
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+            );
 
         return http.build();
     }

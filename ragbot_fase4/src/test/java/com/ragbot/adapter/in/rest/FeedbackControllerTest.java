@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Testa o endpoint de feedback 👍/👎 por interação.
  */
 @WebMvcTest(FeedbackController.class)
-@Import(TestSecurityConfig.class)
+@Import(TestWebSecurityConfig.class)
 @DisplayName("FeedbackController")
 class FeedbackControllerTest {
 

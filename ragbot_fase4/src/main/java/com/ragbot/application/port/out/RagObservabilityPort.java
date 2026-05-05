@@ -10,4 +10,5 @@ public interface RagObservabilityPort {
     List<RagInteraction> findRecent(int limit);
     long countByClassification(String classification);
     long countWithNegativeFeedback();
+    long countWithPositiveFeedback();
 }

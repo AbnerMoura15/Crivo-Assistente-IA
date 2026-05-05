@@ -1,29 +1,30 @@
 package com.ragbot.adapter.in.rest;
 
 import com.ragbot.application.port.in.ManageUsersUseCase;
+import com.ragbot.application.service.AuditLogService;
+import com.ragbot.domain.entity.AuditAction;
 import com.ragbot.domain.entity.User;
 import com.ragbot.domain.entity.UserRole;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Gerenciamento de usuários — acesso restrito a ADMIN.
- * A anotação @PreAuthorize garante no nível do método,
- * além da regra já definida no SecurityConfig.
- */
 @RestController
 @RequestMapping("/api/users")
 @PreAuthorize("hasRole('ADMIN')")
 public class UserController {
 
     private final ManageUsersUseCase manageUsersUseCase;
+    private final AuditLogService auditLogService;
 
-    public UserController(ManageUsersUseCase manageUsersUseCase) {
+    public UserController(ManageUsersUseCase manageUsersUseCase, AuditLogService auditLogService) {
         this.manageUsersUseCase = manageUsersUseCase;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping
@@ -43,20 +44,30 @@ public class UserController {
     @PutMapping("/{id}/role")
     public ResponseEntity<UserResponse> changeRole(
             @PathVariable String id,
-            @RequestBody ChangeRoleRequest request) {
+            @RequestBody ChangeRoleRequest request,
+            Authentication auth,
+            HttpServletRequest httpRequest) {
         User updated = manageUsersUseCase.changeRole(id, request.role());
+        auditLogService.record(auth.getName(), AuditAction.ROLE_CHANGE, id, "USER",
+                "novoRole=" + request.role().name(), httpRequest.getRemoteAddr());
         return ResponseEntity.ok(UserResponse.from(updated));
     }
 
     @PutMapping("/{id}/deactivate")
-    public ResponseEntity<Void> deactivate(@PathVariable String id) {
+    public ResponseEntity<Void> deactivate(@PathVariable String id, Authentication auth,
+                                           HttpServletRequest httpRequest) {
         manageUsersUseCase.deactivate(id);
+        auditLogService.record(auth.getName(), AuditAction.USER_DEACTIVATE, id, "USER",
+                null, httpRequest.getRemoteAddr());
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}/activate")
-    public ResponseEntity<Void> activate(@PathVariable String id) {
+    public ResponseEntity<Void> activate(@PathVariable String id, Authentication auth,
+                                         HttpServletRequest httpRequest) {
         manageUsersUseCase.activate(id);
+        auditLogService.record(auth.getName(), AuditAction.USER_ACTIVATE, id, "USER",
+                null, httpRequest.getRemoteAddr());
         return ResponseEntity.noContent().build();
     }
 

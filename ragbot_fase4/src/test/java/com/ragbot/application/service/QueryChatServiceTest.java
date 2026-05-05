@@ -1,10 +1,12 @@
 package com.ragbot.application.service;
 
 import com.ragbot.application.port.in.QueryChatUseCase;
+import com.ragbot.application.port.out.ChatHistoryPort;
 import com.ragbot.application.port.out.DocumentStoragePort;
 import com.ragbot.application.port.out.EmbeddingPort;
 import com.ragbot.application.port.out.LlmPort;
 import com.ragbot.application.port.out.VectorStorePort;
+import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import com.ragbot.domain.entity.Document;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,16 +15,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("QueryChatService")
 class QueryChatServiceTest {
 
@@ -31,29 +37,42 @@ class QueryChatServiceTest {
     @Mock LlmPort llmPort;
     @Mock DocumentStoragePort documentStoragePort;
     @Mock RagObservabilityService observabilityService;
+    @Mock ChatHistoryPort chatHistoryPort;
 
     private final PiiMaskingService piiMaskingService = new PiiMaskingService();
 
     QueryChatService service;
 
+    private static final ChatSession FAKE_SESSION = new ChatSession(
+            "sess-1", "user", Instant.now(), Instant.now(), List.of());
+
     @BeforeEach
     void setUp() {
+        ChatHistoryService chatHistoryService = new ChatHistoryService(chatHistoryPort);
         service = new QueryChatService(
                 embeddingPort, vectorStorePort, llmPort,
-                documentStoragePort, piiMaskingService, observabilityService, 2
+                documentStoragePort, piiMaskingService,
+                observabilityService, chatHistoryService, 2
         );
+        // sessão padrão para todos os testes
+        when(chatHistoryPort.createSession(anyString())).thenReturn(FAKE_SESSION);
+        when(chatHistoryPort.findSession(anyString())).thenReturn(Optional.empty());
+        when(chatHistoryPort.loadMessages(anyString())).thenReturn(List.of());
     }
 
     @Test
-    @DisplayName("sem documentos deve retornar mensagem informativa")
+    @DisplayName("sem documentos deve retornar mensagem informativa e persistir no histórico")
     void shouldReturnMessageWhenNoDocumentsFound() {
         when(documentStoragePort.findAll()).thenReturn(List.of());
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
-        QueryChatUseCase.ChatResult result = service.query("Pergunta X?", List.of(), "user");
+        QueryChatUseCase.ChatResult result = service.queryWithSession("Pergunta X?", null, "user");
 
         assertThat(result.answer()).contains("Nenhum documento");
         assertThat(result.interactionId()).isEqualTo("id-1");
+        assertThat(result.sessionId()).isEqualTo("sess-1");
+        verify(chatHistoryPort).addMessage(eq("sess-1"), argThat(m -> "user".equals(m.role())));
+        verify(chatHistoryPort).addMessage(eq("sess-1"), argThat(m -> "assistant".equals(m.role())));
     }
 
     @Test
@@ -67,11 +86,28 @@ class QueryChatServiceTest {
         when(llmPort.complete(anyString(), anyList())).thenReturn("Resposta gerada");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-abc");
 
-        QueryChatUseCase.ChatResult result = service.query("Pergunta X?", List.of(), "joao");
+        QueryChatUseCase.ChatResult result = service.queryWithSession("Pergunta X?", null, "joao");
 
         assertThat(result.answer()).isEqualTo("Resposta gerada");
         assertThat(result.interactionId()).isEqualTo("id-abc");
+        assertThat(result.sessionId()).isEqualTo("sess-1");
         verify(observabilityService).recordInteraction(eq("joao"), eq("Pergunta X?"), eq("Resposta gerada"), anyList());
+    }
+
+    @Test
+    @DisplayName("sessionId existente deve reusar sessão e carregar histórico")
+    void shouldReuseExistingSession() {
+        ChatSession existingSession = new ChatSession(
+                "sess-existing", "joao", Instant.now(), Instant.now(), List.of());
+        when(chatHistoryPort.findSession("sess-existing")).thenReturn(Optional.of(existingSession));
+        when(chatHistoryPort.loadMessages("sess-existing")).thenReturn(List.of());
+        when(documentStoragePort.findAll()).thenReturn(List.of());
+        when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-x");
+
+        QueryChatUseCase.ChatResult result = service.queryWithSession("Oi?", "sess-existing", "joao");
+
+        assertThat(result.sessionId()).isEqualTo("sess-existing");
+        verify(chatHistoryPort, never()).createSession(anyString());
     }
 
     @Test
@@ -86,7 +122,7 @@ class QueryChatServiceTest {
         when(llmPort.complete(anyString(), anyList())).thenReturn("resposta");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
-        service.query("Qual o salário?", List.of(), "user");
+        service.queryWithSession("Qual o salário?", null, "user");
 
         verify(llmPort).complete(argThat(prompt ->
                 !prompt.contains("123.456.789-00") && prompt.contains("[CPF]")

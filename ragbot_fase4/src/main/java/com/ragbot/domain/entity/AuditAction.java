@@ -1,0 +1,12 @@
+package com.ragbot.domain.entity;
+
+public enum AuditAction {
+    LOGIN_SUCCESS,
+    LOGIN_FAILED,
+    REGISTER,
+    DOCUMENT_UPLOAD,
+    DOCUMENT_DELETE,
+    ROLE_CHANGE,
+    USER_DEACTIVATE,
+    USER_ACTIVATE
+}
