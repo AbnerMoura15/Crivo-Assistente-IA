@@ -1,0 +1,103 @@
+version: '3.9'
+
+# ── docker-compose de PRODUÇÃO ───────────────────────────────────────────────
+# Uso: docker compose -f docker-compose.prod.yml up -d
+#
+# ANTES de rodar:
+#   1. Copie .env.example para .env
+#   2. Preencha TODAS as variáveis no .env
+#   3. Nunca suba o .env para o Git (já está no .gitignore)
+
+services:
+
+  # ── Banco de dados ──────────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ragbot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-ragbot}
+      POSTGRES_USER:     ${POSTGRES_USER:-ragbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # obrigatório no .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/backup:/backups                # volume para backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ragbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ragbot-internal
+    # Em produção, NÃO expõe a porta do banco para o host
+    # O acesso é apenas via rede interna do Docker
+
+  # ── Aplicação Java ──────────────────────────────────────────────────────────
+  app:
+    image: ragbot:latest           # build com: docker build -t ragbot:latest .
+    container_name: ragbot-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Banco
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ragbot}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ragbot}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      # IA
+      GROQ_API_KEY:   ${GROQ_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      # Segurança
+      JWT_SECRET: ${JWT_SECRET}
+      # Armazenamento
+      RAGBOT_STORAGE_DIR: /data/documents
+    volumes:
+      - documents:/data/documents   # persistência dos arquivos enviados
+    networks:
+      - ragbot-internal
+      - ragbot-external
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # Spring Boot leva ~30s para subir
+
+  # ── Nginx — Reverse Proxy + HTTPS ───────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: ragbot-nginx
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro          # certificados TLS
+      - nginx-cache:/var/cache/nginx
+    networks:
+      - ragbot-external
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+    driver: local
+  documents:
+    driver: local
+  nginx-cache:
+    driver: local
+
+networks:
+  ragbot-internal:  # banco ↔ app (isolado do mundo externo)
+    internal: true
+  ragbot-external:  # nginx ↔ app (exposto ao mundo)
+    driver: bridge

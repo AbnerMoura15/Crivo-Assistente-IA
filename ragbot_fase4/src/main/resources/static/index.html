@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RAGBot — Assistente de Documentos</title>
+<style>
+  :root {
+    --bg:#0f1117;--surface:#171b26;--surface2:#1e2334;--border:#2a3050;
+    --accent:#4f7cff;--accent2:#7b5ea7;--green:#3ecf8e;--red:#ff6b6b;
+    --text:#e2e8f0;--muted:#6b7a99;--user-bg:#1a2540;--bot-bg:#1e2334;
+    --radius:12px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;overflow:hidden}
+
+  /* ── LOGIN ── */
+  #login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:360px}
+  .login-logo{text-align:center;margin-bottom:28px}
+  .login-logo .icon{width:56px;height:56px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 10px}
+  .login-logo h1{font-size:22px;font-weight:600}
+  .login-logo p{font-size:12px;color:var(--muted);margin-top:4px}
+  .form-group{margin-bottom:16px}
+  .form-group label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500}
+  .form-group input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:14px;outline:none;transition:border-color .2s}
+  .form-group input:focus{border-color:var(--accent)}
+  .login-btn{width:100%;background:var(--accent);border:none;border-radius:8px;padding:12px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px;transition:background .2s}
+  .login-btn:hover{background:#3a67e8}
+  .login-btn:disabled{background:var(--border);cursor:not-allowed}
+  .login-error{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:var(--red);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px;display:none}
+
+  /* ── APP LAYOUT ── */
+  #app{display:none;width:100%;height:100vh}
+  .sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ── SIDEBAR HEADER ── */
+  .sidebar-header{padding:16px;border-bottom:1px solid var(--border)}
+  .logo{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .logo-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .logo-text{font-size:17px;font-weight:600}
+
+  /* ── USER BADGE ── */
+  .user-badge{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2)}
+  .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+  .user-info{flex:1;min-width:0}
+  .user-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .user-role{font-size:10px;color:var(--muted);font-family:monospace}
+  .role-badge{font-size:9px;padding:2px 7px;border-radius:99px;font-weight:600;text-transform:uppercase}
+  .role-ADMIN{background:rgba(255,107,107,.15);color:var(--red)}
+  .role-EDITOR{background:rgba(79,124,255,.15);color:var(--accent)}
+  .role-VIEWER{background:rgba(62,207,142,.15);color:var(--green)}
+
+  /* ── NAV MENU ── */
+  .nav-menu{padding:8px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);transition:all .15s;margin-bottom:2px}
+  .nav-item:hover{background:var(--surface2);color:var(--text)}
+  .nav-item.active{background:rgba(79,124,255,.1);color:var(--accent)}
+  .nav-item .nav-icon{font-size:16px;width:20px;text-align:center}
+  .nav-section-label{font-size:9px;color:var(--muted);font-family:monospace;letter-spacing:1px;text-transform:uppercase;padding:12px 12px 4px}
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone{margin:12px;border:2px dashed var(--border);border-radius:var(--radius);padding:16px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
+  .upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:rgba(79,124,255,.05)}
+  .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .upload-text{font-size:12px;color:var(--muted)}
+  .upload-text strong{color:var(--accent)}
+  .upload-progress{display:none;margin:0 12px 8px;background:var(--surface2);border-radius:99px;height:3px;overflow:hidden}
+  .upload-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0;transition:width .3s;animation:shimmer 1.5s infinite}
+  @keyframes shimmer{0%,100%{opacity:1}50%{opacity:.6}}
+
+  /* ── DOCS LIST ── */
+  .docs-label{padding:6px 16px;font-size:9px;font-family:monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+  .docs-list{flex:1;overflow-y:auto;padding:0 8px 8px}
+  .docs-list::-webkit-scrollbar{width:3px}
+  .docs-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .doc-item{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;margin-bottom:2px;transition:background .15s}
+  .doc-item:hover{background:var(--surface2)}
+  .doc-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+  .doc-icon.pdf{background:rgba(255,107,107,.15)}
+  .doc-icon.csv{background:rgba(62,207,142,.15)}
+  .doc-info{flex:1;min-width:0}
+  .doc-name{font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .doc-meta{font-size:9px;color:var(--muted);font-family:monospace}
+  .doc-delete{opacity:0;background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;transition:opacity .15s}
+  .doc-item:hover .doc-delete{opacity:1}
+  .docs-empty{text-align:center;padding:24px 12px;color:var(--muted);font-size:11px;line-height:1.6}
+
+  /* ── LOGOUT ── */
+  .logout-btn{margin:8px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:12px;display:flex;align-items:center;gap:8px;transition:all .15s}
+  .logout-btn:hover{border-color:var(--red);color:var(--red)}
+
+  /* ── TOPBAR ── */
+  .topbar{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
+  .topbar-title{font-size:14px;font-weight:500}
+  .topbar-status{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);font-family:monospace}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .clear-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s}
+  .clear-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ── MESSAGES ── */
+  .messages{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
+  .messages::-webkit-scrollbar{width:3px}
+  .messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .welcome{text-align:center;padding:40px 20px;color:var(--muted)}
+  .welcome-icon{font-size:36px;margin-bottom:12px}
+  .welcome h2{font-size:16px;font-weight:500;color:var(--text);margin-bottom:6px}
+  .welcome p{font-size:12px;line-height:1.6;max-width:320px;margin:0 auto}
+  .welcome-hints{display:flex;flex-direction:column;gap:6px;margin-top:20px;max-width:340px;margin-left:auto;margin-right:auto}
+  .hint{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:11px;cursor:pointer;text-align:left;transition:all .15s;color:var(--text)}
+  .hint:hover{border-color:var(--accent);background:rgba(79,124,255,.05)}
+  .msg{display:flex;gap:10px;animation:fadeIn .2s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .msg.user{flex-direction:row-reverse}
+  .msg-avatar{width:30px;height:30px;min-width:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .msg.user .msg-avatar{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+  .msg.bot .msg-avatar{background:var(--surface2);border:1px solid var(--border)}
+  .msg-body{max-width:72%}
+  .msg-label{font-size:9px;color:var(--muted);font-family:monospace;margin-bottom:4px}
+  .msg.user .msg-label{text-align:right}
+  .msg-bubble{padding:10px 14px;border-radius:var(--radius);font-size:13px;line-height:1.6}
+  .msg.user .msg-bubble{background:var(--user-bg);border:1px solid rgba(79,124,255,.2);border-radius:var(--radius) var(--radius) 4px var(--radius)}
+  .msg.bot .msg-bubble{background:var(--bot-bg);border:1px solid var(--border);border-radius:var(--radius) var(--radius) var(--radius) 4px}
+  .typing-indicator{display:flex;gap:4px;align-items:center;padding:2px 0}
+  .typing-indicator span{width:6px;height:6px;background:var(--muted);border-radius:50%;animation:bounce 1.2s infinite}
+  .typing-indicator span:nth-child(2){animation-delay:.2s}
+  .typing-indicator span:nth-child(3){animation-delay:.4s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}
+
+  /* ── INPUT ── */
+  .input-area{padding:14px 20px;border-top:1px solid var(--border);background:var(--surface)}
+  .input-wrap{display:flex;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:4px 4px 4px 14px;transition:border-color .2s}
+  .input-wrap:focus-within{border-color:var(--accent)}
+  #question{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:13px;padding:9px 0;resize:none;max-height:100px;line-height:1.5;font-family:inherit}
+  #question::placeholder{color:var(--muted)}
+  #send-btn{width:36px;height:36px;min-width:36px;align-self:flex-end;margin-bottom:2px;background:var(--accent);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:background .15s}
+  #send-btn:hover{background:#3a67e8}
+  #send-btn:disabled{background:var(--border);cursor:not-allowed}
+  .input-hint{font-size:10px;color:var(--muted);margin-top:6px;font-family:monospace;text-align:center}
+
+  /* ── TOAST ── */
+  .toast-container{position:fixed;bottom:70px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:500}
+  .toast{padding:9px 14px;border-radius:8px;font-size:12px;animation:slideIn .2s ease;max-width:280px}
+  @keyframes slideIn{from{transform:translateX(16px);opacity:0}to{transform:none;opacity:1}}
+  .toast.success{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green)}
+  .toast.error{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:var(--red)}
+
+  /* ── ADMIN PANEL (Users) ── */
+  .panel{flex:1;overflow-y:auto;padding:24px}
+  .panel-title{font-size:18px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:10px}
+  .users-table{width:100%;border-collapse:collapse;font-size:13px}
+  .users-table th{text-align:left;padding:10px 14px;font-size:10px;font-family:monospace;color:var(--muted);border-bottom:1px solid var(--border);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+  .users-table td{padding:12px 14px;border-bottom:1px solid rgba(42,48,80,.5)}
+  .users-table tr:hover td{background:var(--surface2)}
+  select.role-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer}
+  .status-badge{font-size:10px;padding:2px 8px;border-radius:99px}
+  .status-active{background:rgba(62,207,142,.1);color:var(--green)}
+  .status-inactive{background:rgba(255,107,107,.1);color:var(--red)}
+  .action-btn{background:none;border:1px solid var(--border);color:var(--muted);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s}
+  .action-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .action-btn.danger:hover{border-color:var(--red);color:var(--red)}
+</style>
+</head>
+<body>
+
+<!-- ══ TELA DE LOGIN ══════════════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="icon">🤖</div>
+      <h1>RAGBot</h1>
+      <p>Assistente de Documentos Internos</p>
+    </div>
+    <div class="form-group">
+      <label>Usuário</label>
+      <input type="text" id="login-username" placeholder="seu.usuario" autocomplete="username"/>
+    </div>
+    <div class="form-group">
+      <label>Senha</label>
+      <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- ══ APP PRINCIPAL ══════════════════════════════════════════════════════ -->
+<div id="app" style="display:none;width:100%;height:100vh;display:none;flex-direction:row">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <!-- Logo -->
+    <div class="sidebar-header">
+      <div class="logo">
+        <div class="logo-icon">🤖</div>
+        <span class="logo-text">RAGBot</span>
+      </div>
+    </div>
+
+    <!-- User Badge -->
+    <div class="user-badge">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <div class="user-info">
+        <div class="user-name" id="user-name">—</div>
+        <span class="role-badge" id="user-role-badge">—</span>
+      </div>
+    </div>
+
+    <!-- Nav Menu -->
+    <div class="nav-menu">
+      <div class="nav-section-label">Navegação</div>
+      <div class="nav-item active" id="nav-chat" onclick="showView('chat')">
+        <span class="nav-icon">💬</span> Chat
+      </div>
+      <!-- Documentos: VIEWER pode ver, EDITOR/ADMIN podem fazer upload -->
+      <div class="nav-item" id="nav-docs" onclick="showView('docs')">
+        <span class="nav-icon">📂</span> Documentos
+      </div>
+      <!-- Usuários: apenas ADMIN -->
+      <div class="nav-item" id="nav-users" style="display:none" onclick="showView('users')">
+        <span class="nav-icon">👥</span> Usuários
+      </div>
+    </div>
+
+    <!-- Upload Zone: EDITOR e ADMIN -->
+    <div id="upload-section" style="display:none">
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".pdf,.csv" multiple/>
+        <div style="font-size:20px;margin-bottom:6px">📂</div>
+        <div class="upload-text"><strong>Clique ou arraste</strong><br/>PDF e CSV</div>
+      </div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <!-- Docs List -->
+    <div class="docs-label">Indexados</div>
+    <div class="docs-list" id="docsList">
+      <div class="docs-empty">Nenhum documento.<br/>Faça upload para começar.</div>
+    </div>
+
+    <!-- Logout -->
+    <button class="logout-btn" onclick="doLogout()">
+      <span>↩</span> Sair
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- ── VIEW: CHAT ── -->
+    <div id="view-chat" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div class="topbar">
+        <div class="topbar-title">Chat com seus documentos</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div class="topbar-status"><div class="status-dot"></div>online</div>
+          <button class="clear-btn" onclick="clearChat()">↺ Limpar</button>
+        </div>
+      </div>
+      <div class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="welcome-icon">💬</div>
+          <h2>Como posso ajudar?</h2>
+          <p>Faça perguntas sobre os documentos indexados na barra lateral.</p>
+          <div class="welcome-hints">
+            <button class="hint" onclick="useHint(this)">📋 Quais são os procedimentos de segurança?</button>
+            <button class="hint" onclick="useHint(this)">📊 Resuma os dados do relatório enviado.</button>
+            <button class="hint" onclick="useHint(this)">🔍 Quais itens precisam de atenção?</button>
+          </div>
+        </div>
+      </div>
+      <div class="input-area">
+        <div class="input-wrap">
+          <textarea id="question" placeholder="Faça uma pergunta sobre os documentos..." rows="1"></textarea>
+          <button id="send-btn" onclick="sendMessage()">➤</button>
+        </div>
+        <div class="input-hint">Enter para enviar · Shift+Enter para nova linha</div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: DOCUMENTOS ── -->
+    <div id="view-docs" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="topbar">
+        <div class="topbar-title">📂 Documentos Indexados</div>
+      </div>
+      <div class="panel">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">
+          Lista completa de documentos disponíveis para consulta no chat.
+        </p>
+        <div id="docs-panel-list"></div>
+      </div>
+    </div>
+
+    <!-- ── VIEW: USUÁRIOS (ADMIN) ── -->
+    <div id="view-users" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="topbar">
+        <div class="topbar-title">👥 Gerenciar Usuários</div>
+      </div>
+      <div class="panel">
+        <table class="users-table" id="users-table">
+          <thead>
+            <tr>
+              <th>Usuário</th><th>Email</th><th>Perfil</th>
+              <th>Status</th><th>Último Login</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API = '';
+let token = null;
+let currentUser = null;
+let chatHistory = [];
+
+// ── AUTH ──────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+
+  if (!username || !password) {
+    showLoginError('Preencha usuário e senha.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  errEl.style.display = 'none';
+
+  try {
+    const res = await fetch(API + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      showLoginError(data.message || 'Usuário ou senha inválidos.');
+      return;
+    }
+
+    const data = await res.json();
+    token = data.token;
+
+    // Decodifica payload do JWT (sem verificar assinatura — só para display)
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    currentUser = { username: payload.sub, role: payload.role };
+
+    document.getElementById('login-screen').style.display = 'none';
+    initApp();
+  } catch (err) {
+    showLoginError('Erro de conexão. Verifique se o servidor está rodando.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function doLogout() {
+  token = null;
+  currentUser = null;
+  chatHistory = [];
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-error').style.display = 'none';
+}
+
+// Enter no login
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('login-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+});
+
+// ── INIT APP ─────────────────────────────────────────────────────────────────
+function initApp() {
+  const app = document.getElementById('app');
+  app.style.display = 'flex';
+
+  // User badge
+  document.getElementById('user-name').textContent = currentUser.username;
+  document.getElementById('user-avatar').textContent = currentUser.username[0].toUpperCase();
+  const roleBadge = document.getElementById('user-role-badge');
+  roleBadge.textContent = currentUser.role;
+  roleBadge.className = 'role-badge role-' + currentUser.role;
+
+  // Menu e funcionalidades por perfil
+  const role = currentUser.role;
+  if (role === 'ADMIN') {
+    document.getElementById('nav-users').style.display = 'flex';
+    document.getElementById('upload-section').style.display = 'block';
+  } else if (role === 'EDITOR') {
+    document.getElementById('upload-section').style.display = 'block';
+  }
+  // VIEWER não vê upload nem usuários
+
+  loadDocuments();
+  initUpload();
+  showView('chat');
+}
+
+// ── NAVEGAÇÃO ─────────────────────────────────────────────────────────────────
+function showView(view) {
+  ['chat','docs','users'].forEach(v => {
+    document.getElementById('view-' + v).style.display = 'none';
+    document.getElementById('nav-' + v)?.classList.remove('active');
+  });
+  document.getElementById('view-' + view).style.display = 'flex';
+  document.getElementById('nav-' + view)?.classList.add('active');
+
+  if (view === 'docs') renderDocsPanel();
+  if (view === 'users') loadUsers();
+}
+
+// ── UPLOAD ───────────────────────────────────────────────────────────────────
+function initUpload() {
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    [...e.dataTransfer.files].forEach(uploadFile);
+  });
+  document.getElementById('fileInput').addEventListener('change', e => {
+    [...e.target.files].forEach(uploadFile);
+    e.target.value = '';
+  });
+}
+
+async function uploadFile(file) {
+  const allowed = ['application/pdf','text/csv','application/csv'];
+  if (!allowed.includes(file.type) && !file.name.match(/\.(pdf|csv)$/i)) {
+    showToast('Formato não suportado: ' + file.name, 'error');
+    return;
+  }
+  document.getElementById('uploadProgress').style.display = 'block';
+  document.getElementById('progressBar').style.width = '80%';
+
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const res = await fetch(API + '/api/documents', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: form
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+    showToast('✓ ' + file.name + ' indexado!', 'success');
+    loadDocuments();
+  } catch(err) {
+    showToast('Erro: ' + err.message, 'error');
+  } finally {
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.getElementById('progressBar').style.width = '0';
+  }
+}
+
+// ── DOCUMENTOS ───────────────────────────────────────────────────────────────
+let docsCache = [];
+
+async function loadDocuments() {
+  try {
+    const res = await fetch(API + '/api/documents', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    docsCache = await res.json();
+    renderDocsSidebar(docsCache);
+  } catch(err) { console.error('Erro ao carregar documentos', err); }
+}
+
+function renderDocsSidebar(docs) {
+  const list = document.getElementById('docsList');
+  if (!docs.length) {
+    list.innerHTML = '<div class="docs-empty">Nenhum documento.<br/>Faça upload para começar.</div>';
+    return;
+  }
+  list.innerHTML = docs.map(doc => {
+    const isPdf = doc.mimeType === 'application/pdf';
+    const canDelete = currentUser.role === 'ADMIN';
+    return `<div class="doc-item" data-id="${doc.id}">
+      <div class="doc-icon ${isPdf?'pdf':'csv'}">${isPdf?'📄':'📊'}</div>
+      <div class="doc-info">
+        <div class="doc-name" title="${doc.fileName}">${doc.fileName}</div>
+        <div class="doc-meta">${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
+      </div>
+      ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${doc.fileName}')">✕</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderDocsPanel() {
+  const el = document.getElementById('docs-panel-list');
+  if (!docsCache.length) {
+    el.innerHTML = '<div class="docs-empty">Nenhum documento indexado ainda.</div>';
+    return;
+  }
+  el.innerHTML = docsCache.map(doc => {
+    const isPdf = doc.mimeType === 'application/pdf';
+    const canDelete = currentUser.role === 'ADMIN';
+    return `<div class="doc-item" style="background:var(--surface2);margin-bottom:6px;border-radius:8px;padding:12px">
+      <div class="doc-icon ${isPdf?'pdf':'csv'}" style="width:36px;height:36px;font-size:16px">${isPdf?'📄':'📊'}</div>
+      <div class="doc-info">
+        <div class="doc-name" style="font-size:13px">${doc.fileName}</div>
+        <div class="doc-meta">${doc.mimeType} · ${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
+      </div>
+      ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc('${doc.id}','${doc.fileName}')">🗑 Remover</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function deleteDoc(id, name) {
+  if (!confirm(`Remover "${name}" do índice?`)) return;
+  try {
+    await fetch(API + '/api/documents/' + id, {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    showToast('Documento removido.', 'success');
+    loadDocuments();
+  } catch(err) { showToast('Erro ao remover.', 'error'); }
+}
+
+// ── USUÁRIOS (ADMIN) ──────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const res = await fetch(API + '/api/users', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const users = await res.json();
+    renderUsers(users);
+  } catch(err) { showToast('Erro ao carregar usuários.', 'error'); }
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.username}</strong></td>
+      <td style="color:var(--muted)">${u.email}</td>
+      <td>
+        <select class="role-select" onchange="changeRole('${u.id}',this.value)">
+          <option value="VIEWER" ${u.role==='VIEWER'?'selected':''}>VIEWER</option>
+          <option value="EDITOR" ${u.role==='EDITOR'?'selected':''}>EDITOR</option>
+          <option value="ADMIN"  ${u.role==='ADMIN' ?'selected':''}>ADMIN</option>
+        </select>
+      </td>
+      <td><span class="status-badge ${u.active?'status-active':'status-inactive'}">${u.active?'Ativo':'Inativo'}</span></td>
+      <td style="color:var(--muted);font-size:11px">${u.lastLogin ? fmtDate(u.lastLogin) : 'Nunca'}</td>
+      <td>
+        ${u.active
+          ? `<button class="action-btn danger" onclick="toggleUser('${u.id}',false)">Desativar</button>`
+          : `<button class="action-btn" onclick="toggleUser('${u.id}',true)">Reativar</button>`}
+      </td>
+    </tr>`).join('');
+}
+
+async function changeRole(id, role) {
+  try {
+    await fetch(API + '/api/users/' + id + '/role', {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role })
+    });
+    showToast('Perfil atualizado.', 'success');
+  } catch(err) { showToast('Erro ao atualizar perfil.', 'error'); }
+}
+
+async function toggleUser(id, activate) {
+  const action = activate ? 'activate' : 'deactivate';
+  try {
+    await fetch(API + '/api/users/' + id + '/' + action, {
+      method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    showToast(activate ? 'Usuário reativado.' : 'Usuário desativado.', 'success');
+    loadUsers();
+  } catch(err) { showToast('Erro.', 'error'); }
+}
+
+// ── CHAT ─────────────────────────────────────────────────────────────────────
+const textarea = document.getElementById('question');
+textarea.addEventListener('input', () => {
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
+});
+textarea.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+async function sendMessage() {
+  const question = textarea.value.trim();
+  if (!question) return;
+  document.getElementById('welcome')?.remove();
+  appendMsg('user', question);
+  chatHistory.push({ role: 'user', content: question });
+  textarea.value = '';
+  textarea.style.height = 'auto';
+  document.getElementById('send-btn').disabled = true;
+  const tid = appendTyping();
+  try {
+    const res = await fetch(API + '/api/chat', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, history: chatHistory.slice(-6) })
+    });
+    const data = await res.json();
+    removeTyping(tid);
+    const answer = data.answer || 'Sem resposta.';
+    appendMsg('bot', answer);
+    chatHistory.push({ role: 'assistant', content: answer });
+  } catch(err) {
+    removeTyping(tid);
+    appendMsg('bot', '⚠️ Erro de conexão.');
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+function appendMsg(role, content) {
+  const msgs = document.getElementById('messages');
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `
+    <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
+    <div class="msg-body">
+      <div class="msg-label">${isUser ? currentUser?.username || 'Você' : 'RAGBot'}</div>
+      <div class="msg-bubble">${escHtml(content).replace(/\n/g,'<br/>')}</div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function appendTyping() {
+  const id = 'typing-' + Date.now();
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.id = id;
+  div.innerHTML = `<div class="msg-avatar">🤖</div>
+    <div class="msg-body"><div class="msg-label">RAGBot</div>
+    <div class="msg-bubble"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function removeTyping(id) { document.getElementById(id)?.remove(); }
+
+function clearChat() {
+  chatHistory = [];
+  document.getElementById('messages').innerHTML = `
+    <div class="welcome" id="welcome">
+      <div class="welcome-icon">💬</div>
+      <h2>Como posso ajudar?</h2>
+      <p>Faça perguntas sobre os documentos indexados.</p>
+      <div class="welcome-hints">
+        <button class="hint" onclick="useHint(this)">📋 Quais são os procedimentos de segurança?</button>
+        <button class="hint" onclick="useHint(this)">📊 Resuma os dados do relatório enviado.</button>
+        <button class="hint" onclick="useHint(this)">🔍 Quais itens precisam de atenção?</button>
+      </div>
+    </div>`;
+}
+
+function useHint(el) {
+  textarea.value = el.textContent.trim().replace(/^[^\s]+\s/,'');
+  sendMessage();
+}
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function formatSize(b) {
+  if(b<1024) return b+'B';
+  if(b<1048576) return (b/1024).toFixed(1)+'KB';
+  return (b/1048576).toFixed(1)+'MB';
+}
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'});
+}
+function showToast(msg, type='success') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+</script>
+</body>
+</html>

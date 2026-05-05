@@ -1,0 +1,91 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5544/ragbot
+    username: postgres
+    password: postgres
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+ragbot:
+  ai:
+    provider: groq
+  chunking:
+    size: 300
+    overlap: 50
+  retrieval:
+    top-k: 2
+  storage:
+    dir: ./documents
+  security:
+    jwt:
+      secret: ${JWT_SECRET:ragbot-secret-key-troque-em-producao-min32!}
+      expiration-seconds: ${JWT_EXPIRATION:86400}
+  # ── Rate Limiting (#5) ──────────────────────────────────────────────────────
+  rate-limit:
+    user-per-minute: ${RATE_USER_MIN:20}    # Requisições por minuto por usuário autenticado
+    user-per-day: ${RATE_USER_DAY:500}       # Requisições por dia por usuário autenticado
+    anon-per-minute: ${RATE_ANON_MIN:5}      # Requisições por minuto por IP anônimo
+    anon-per-day: ${RATE_ANON_DAY:50}        # Requisições por dia por IP anônimo
+
+# ── Groq (#6 — timeout e retry) ────────────────────────────────────────────
+groq:
+  endpoint: ${GROQ_ENDPOINT:https://api.groq.com/openai/v1}
+  token: ${GROQ_API_KEY}
+  model: ${GROQ_MODEL:llama-3.3-70b-versatile}
+  timeout-seconds: ${GROQ_TIMEOUT:30}         # Tempo máximo de espera por resposta
+  max-retries: ${GROQ_RETRIES:3}              # Tentativas em caso de 429/5xx
+  initial-backoff-ms: ${GROQ_BACKOFF:500}     # Espera inicial entre retries (dobra a cada tentativa)
+
+# ── Google (Embedding) ───────────────────────────────────────────────────────
+google:
+  llm-endpoint: ${GOOGLE_LLM_ENDPOINT:https://generativelanguage.googleapis.com/v1beta}
+  token: ${GOOGLE_API_KEY}
+  model: ${GOOGLE_MODEL:gemini-2.5-flash}
+  embedding-endpoint: ${GOOGLE_EMBEDDING_ENDPOINT:https://generativelanguage.googleapis.com/v1beta}
+  embedding-model: ${GOOGLE_EMBEDDING_MODEL:gemini-embedding-001}
+  timeout-seconds: ${GOOGLE_TIMEOUT:30}
+
+# ── Copilot ──────────────────────────────────────────────────────────────────
+copilot:
+  endpoint: ${COPILOT_ENDPOINT:https://api.githubcopilot.com}
+  token: ${COPILOT_TOKEN:seu-token-aqui}
+  model: ${COPILOT_MODEL:gpt-4o}
+  embedding-model: ${COPILOT_EMBEDDING_MODEL:text-embedding-3-small}
+
+logging:
+  level:
+    com.ragbot: DEBUG
+
+# ── Spring Actuator (#20) ────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized   # detalhes apenas para autenticados
+      show-components: always
+  health:
+    diskspace:
+      enabled: true
+      threshold: 100MB                # avisa quando disco < 100MB livre
+  info:
+    env:
+      enabled: true
+
+# Informações da aplicação exibidas em /actuator/info
+info:
+  app:
+    name: RAGBot
+    version: '@project.version@'
+    description: Assistente de Documentos com IA e Busca Semântica
