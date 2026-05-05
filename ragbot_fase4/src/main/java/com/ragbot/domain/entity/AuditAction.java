@@ -9,5 +9,7 @@ public enum AuditAction {
     ROLE_CHANGE,
     USER_DEACTIVATE,
     USER_ACTIVATE,
-    USER_CREATE
+    USER_CREATE,
+    NAMESPACE_CREATE,
+    NAMESPACE_DELETE
 }

@@ -2,13 +2,19 @@ package com.ragbot.adapter.in.rest.dto;
 
 import com.ragbot.domain.entity.Document;
 import com.ragbot.domain.entity.ChatSession;
+import com.ragbot.domain.entity.Namespace;
 
 import java.time.Instant;
 import java.util.List;
 
 public class RestDtos {
 
-    public record ChatRequest(String question, String sessionId, List<MessageDto> history) {}
+    public record ChatRequest(
+            String question,
+            String sessionId,
+            List<MessageDto> history,
+            String namespaceId       // #33: null → usa namespace padrão
+    ) {}
 
     public record ChatResponse(String answer, String interactionId, String sessionId) {}
 
@@ -34,17 +40,23 @@ public class RestDtos {
         }
     }
 
+    /** Resposta de documento — inclui namespace e versão (#33, #26). */
     public record DocumentResponse(
             String id, String fileName, String mimeType,
-            long fileSizeBytes, Instant ingestedAt
+            long fileSizeBytes, Instant ingestedAt,
+            String namespaceId, int version, boolean hasHistory
     ) {
         public static DocumentResponse from(Document doc) {
-            return new DocumentResponse(doc.id(), doc.fileName(), doc.mimeType(),
-                    doc.fileSizeBytes(), doc.ingestedAt());
+            return new DocumentResponse(
+                    doc.id(), doc.fileName(), doc.mimeType(),
+                    doc.fileSizeBytes(), doc.ingestedAt(),
+                    doc.namespaceId(), doc.version(),
+                    doc.version() > 1 || doc.originalDocumentId() != null
+            );
         }
     }
 
-    public record IngestResponse(String documentId, String message) {}
+    public record IngestResponse(String documentId, String message, int version) {}
 
     public record ErrorResponse(String error, String message) {}
 
@@ -60,4 +72,18 @@ public class RestDtos {
                     monthlyLimit > 0 ? Math.round((double) tokensUsed / monthlyLimit * 1000) / 10.0 : 0.0);
         }
     }
+
+    /** Resposta de namespace (#33). */
+    public record NamespaceResponse(
+            String id, String slug, String displayName, Instant createdAt
+    ) {
+        public static NamespaceResponse from(Namespace ns) {
+            return new NamespaceResponse(ns.id(), ns.slug(), ns.displayName(), ns.createdAt());
+        }
+    }
+
+    /** Histórico de versões de um documento (#26). */
+    public record DocumentVersionResponse(
+            String id, int version, Instant ingestedAt, String status
+    ) {}
 }

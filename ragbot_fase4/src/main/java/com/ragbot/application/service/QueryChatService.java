@@ -8,6 +8,7 @@ import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatMessage;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
+import com.ragbot.domain.entity.Namespace;
 import com.ragbot.domain.entity.ScoredChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,19 +23,13 @@ import java.util.stream.Collectors;
 /**
  * Serviço central do pipeline RAG.
  *
- * Fase 8 — Melhorias de qualidade:
- * - Re-ranking heurístico (#28a): filtra por score mínimo + penaliza chunks curtos
- * - Busca híbrida (#27): combina vetorial + BM25 quando habilitado
- * - Controle de tokens (#4): verifica limite antes e registra uso depois
+ * Fase 10 (#33 — Namespaces):
+ * - query e queryWithSession aceitam namespaceId para isolar o conhecimento.
+ * - fetchScored passa namespaceId para o VectorStorePort.
+ * - Verificação de "nenhum documento" escopada ao namespace.
  *
- * Pipeline:
- * 1. Verifica limite de tokens do usuário
- * 2. Embeda a pergunta
- * 3. Busca chunks (vetorial ou híbrida)
- * 4. Re-ranking: filtra + reordena + limita
- * 5. Mascara PII no contexto
- * 6. Chama LLM com contexto + histórico
- * 7. Persiste no banco + registra tokens
+ * Fase 8:
+ * - Re-ranking heurístico (#28a), busca híbrida (#27), controle de tokens (#4).
  */
 @Service
 public class QueryChatService implements QueryChatUseCase {
@@ -102,13 +97,15 @@ public class QueryChatService implements QueryChatUseCase {
     }
 
     @Override
-    public ChatResult query(String question, List<ChatMessage> history, String username) {
-        return queryWithSession(question, null, username);
+    public ChatResult query(String question, List<ChatMessage> history,
+                            String username, String namespaceId) {
+        return queryWithSession(question, null, username, namespaceId);
     }
 
     @Override
-    public ChatResult queryWithSession(String question, String sessionId, String username) {
-        log.info("Pergunta de '{}' (sessão={}): {}", username, sessionId, question);
+    public ChatResult queryWithSession(String question, String sessionId,
+                                       String username, String namespaceId) {
+        log.info("Pergunta de '{}' (sessão={} namespace={}): {}", username, sessionId, namespaceId, question);
 
         // #4 — Verifica limite de tokens ANTES de chamar o LLM
         tokenUsageService.checkLimit(username);
@@ -116,8 +113,9 @@ public class QueryChatService implements QueryChatUseCase {
         ChatSession session = chatHistoryService.getOrCreateSession(sessionId, username);
         List<ChatMessage> dbHistory = chatHistoryService.loadRecentMessages(session.id());
 
-        if (documentStoragePort.findAll().isEmpty()) {
-            String noDocsAnswer = "Nenhum documento foi encontrado. Por favor, faça o upload de documentos primeiro.";
+        // Verifica se há documentos no namespace ativo
+        if (documentStoragePort.findByNamespace(namespaceId).isEmpty()) {
+            String noDocsAnswer = "Nenhum documento foi encontrado neste namespace. Por favor, faça o upload de documentos primeiro.";
             chatHistoryService.saveUserMessage(session.id(), question);
             chatHistoryService.saveAssistantMessage(session.id(), noDocsAnswer);
             String interactionId = observabilityService.recordInteraction(
@@ -125,12 +123,12 @@ public class QueryChatService implements QueryChatUseCase {
             return new ChatResult(noDocsAnswer, interactionId, session.id());
         }
 
-        // Embeda e busca chunks
+        // Embeda e busca chunks escopados ao namespace
         List<Float> queryEmbedding = embeddingPort.embed(question);
         log.info("Embedding gerado: {} dimensões para '{}'",
                 queryEmbedding.size(), question.substring(0, Math.min(50, question.length())));
 
-        List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question);
+        List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question, namespaceId);
 
         if (relevantChunks.isEmpty()) {
             String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
@@ -168,21 +166,14 @@ public class QueryChatService implements QueryChatUseCase {
 
     // ── #28a + #27 — Busca e Re-ranking ──────────────────────────────────────
 
-    /**
-     * Busca chunks (vetorial ou híbrida) e aplica re-ranking:
-     * 1. Busca topK * 3 candidatos (over-fetch para ter margem)
-     * 2. Filtra por score ajustado >= minScore
-     * 3. Reordena por score decrescente
-     * 4. Retorna os topK melhores
-     */
-    private List<Chunk> retrieveAndRerank(List<Float> queryEmbedding, String question) {
-        int fetchK = topK * 3; // busca mais para ter margem no filtro
+    private List<Chunk> retrieveAndRerank(List<Float> queryEmbedding, String question,
+                                           String namespaceId) {
+        int fetchK = topK * 3;
+        List<ScoredChunk> scored = fetchScored(queryEmbedding, question, fetchK, namespaceId);
 
-        List<ScoredChunk> scored = fetchScored(queryEmbedding, question, fetchK);
+        log.info("Busca retornou {} candidatos (hybrid={} namespace={})",
+                scored.size(), hybridEnabled, namespaceId);
 
-        log.info("Busca retornou {} candidatos (hybrid={})", scored.size(), hybridEnabled);
-
-        // Log scores para diagnóstico de threshold
         scored.forEach(sc -> log.debug(
                 "  chunk '{}...' score={} adjusted={} len={}",
                 sc.chunk().content().substring(0, Math.min(50, sc.chunk().content().length())).replace("\n", " "),
@@ -203,20 +194,18 @@ public class QueryChatService implements QueryChatUseCase {
         return result;
     }
 
-    /**
-     * Tenta busca híbrida; se falhar (ex: dicionário 'portuguese' não instalado),
-     * cai automaticamente para busca vetorial pura.
-     */
-    private List<ScoredChunk> fetchScored(List<Float> queryEmbedding, String question, int fetchK) {
+    private List<ScoredChunk> fetchScored(List<Float> queryEmbedding, String question,
+                                           int fetchK, String namespaceId) {
         if (hybridEnabled) {
             try {
-                return vectorStorePort.findSimilarHybrid(queryEmbedding, question, fetchK, semanticWeight);
+                return vectorStorePort.findSimilarHybrid(
+                        queryEmbedding, question, fetchK, semanticWeight, namespaceId);
             } catch (Exception e) {
                 log.warn("Busca híbrida falhou ({}), usando vetorial pura como fallback: {}",
                         e.getClass().getSimpleName(), e.getMessage());
             }
         }
-        return vectorStorePort.findSimilar(queryEmbedding, fetchK);
+        return vectorStorePort.findSimilar(queryEmbedding, fetchK, namespaceId);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

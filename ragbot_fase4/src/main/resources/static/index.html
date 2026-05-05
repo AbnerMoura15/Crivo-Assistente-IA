@@ -218,6 +218,24 @@
   .btn-primary:disabled{background:var(--border);cursor:not-allowed}
   .field-error{font-size:11px;color:var(--red);margin-top:4px;display:none}
 
+  /* ── NAMESPACE SELECTOR ── */
+  .ns-selector-wrap{padding:6px 8px;border-bottom:1px solid var(--border)}
+  .ns-label{font-size:9px;color:var(--muted);font-family:monospace;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+  .ns-select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:11px;outline:none;cursor:pointer;transition:border-color .2s}
+  .ns-select:focus{border-color:var(--accent)}
+
+  /* ── VERSÃO badge ── */
+  .version-badge{font-size:8px;font-family:monospace;background:rgba(79,124,255,.15);color:var(--accent);border-radius:99px;padding:1px 6px;margin-left:4px;font-weight:600}
+  .version-badge.v1{background:rgba(62,207,142,.12);color:var(--green)}
+
+  /* ── NAMESPACES VIEW ── */
+  .ns-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:8px;display:flex;align-items:center;gap:14px}
+  .ns-icon{font-size:20px;width:36px;height:36px;background:rgba(79,124,255,.12);border-radius:8px;display:flex;align-items:center;justify-content:center}
+  .ns-info{flex:1}
+  .ns-slug{font-size:10px;font-family:monospace;color:var(--accent)}
+  .ns-name{font-size:13px;font-weight:500}
+  .ns-default-badge{font-size:9px;background:rgba(62,207,142,.12);color:var(--green);border-radius:99px;padding:1px 8px;font-weight:600}
+
   /* ── TOAST ── */
   .toast-container{position:fixed;bottom:70px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:500}
   .toast{padding:9px 14px;border-radius:8px;font-size:12px;animation:slideIn .2s ease;max-width:280px}
@@ -269,6 +287,14 @@
       </div>
     </div>
 
+    <!-- Namespace selector (#33) -->
+    <div class="ns-selector-wrap">
+      <div class="ns-label">Namespace</div>
+      <select class="ns-select" id="ns-select" onchange="changeNamespace(this.value)">
+        <option value="00000000-0000-0000-0000-000000000010">Padrão</option>
+      </select>
+    </div>
+
     <div class="nav-menu">
       <div class="nav-section-label">Principal</div>
       <div class="nav-item active" id="nav-chat" onclick="showView('chat')">
@@ -290,6 +316,9 @@
       </div>
       <div class="nav-item" id="nav-audit" style="display:none" onclick="showView('audit')">
         <span class="nav-icon">🔍</span> Auditoria
+      </div>
+      <div class="nav-item" id="nav-namespaces" style="display:none" onclick="showView('namespaces')">
+        <span class="nav-icon">🗂️</span> Namespaces
       </div>
     </div>
 
@@ -466,6 +495,7 @@
             <option>DOCUMENT_UPLOAD</option><option>DOCUMENT_DELETE</option>
             <option>ROLE_CHANGE</option>
             <option>USER_DEACTIVATE</option><option>USER_ACTIVATE</option><option>USER_CREATE</option>
+            <option>NAMESPACE_CREATE</option><option>NAMESPACE_DELETE</option>
           </select>
           <input type="number" id="audit-limit" value="100" min="10" max="500" style="width:80px"/>
           <button onclick="loadAudit()">Buscar</button>
@@ -480,6 +510,41 @@
       </div>
     </div>
 
+    <!-- ── NAMESPACES (#33) ── -->
+    <div id="view-namespaces" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div class="topbar">
+        <div class="topbar-title">🗂️ Namespaces</div>
+        <div style="display:flex;gap:8px">
+          <button class="clear-btn" style="background:rgba(79,124,255,.12);border-color:var(--accent);color:var(--accent)" onclick="openCreateNsModal()">+ Novo namespace</button>
+          <button class="clear-btn" onclick="loadNamespacesView()">↺ Atualizar</button>
+        </div>
+      </div>
+      <div class="panel" id="namespaces-list">
+        <div class="empty-state"><div class="ei">🗂️</div><p>Carregando…</p></div>
+      </div>
+    </div>
+
+    <!-- ── MODAL CRIAR NAMESPACE ── -->
+    <div id="modal-create-ns" class="modal-overlay" style="display:none" onclick="closeNsModalOnOverlay(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <h3>🗂️ Novo Namespace</h3>
+        <div class="form-group">
+          <label>Slug (identificador único)</label>
+          <input type="text" id="new-ns-slug" placeholder="ex: rh, financeiro, juridico" autocomplete="off"/>
+          <div class="field-error" id="err-ns-slug"></div>
+        </div>
+        <div class="form-group">
+          <label>Nome de exibição</label>
+          <input type="text" id="new-ns-name" placeholder="ex: Recursos Humanos" autocomplete="off"/>
+          <div class="field-error" id="err-ns-name"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="closeCreateNsModal()">Cancelar</button>
+          <button class="btn-primary" id="btn-create-ns" onclick="submitCreateNs()">Criar namespace</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -490,6 +555,8 @@ const API = '';
 let token = null;
 let currentUser = null;
 let currentSessionId = null;   // #13 — sessão ativa no chat
+let currentNamespaceId = '00000000-0000-0000-0000-000000000010'; // #33 — namespace padrão
+let namespacesCache = [];
 
 // ══ AUTH ═══════════════════════════════════════════════════════════════════
 async function doLogin() {
@@ -538,7 +605,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') doLogin();
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeCreateUserModal();
+    if (e.key === 'Escape') { closeCreateUserModal(); closeCreateNsModal(); }
   });
 });
 
@@ -556,19 +623,21 @@ function initApp() {
     document.getElementById('nav-dashboard').style.display = 'flex';
     document.getElementById('nav-users').style.display = 'flex';
     document.getElementById('nav-audit').style.display = 'flex';
+    document.getElementById('nav-namespaces').style.display = 'flex';
     document.getElementById('upload-section').style.display = 'block';
   } else if (currentUser.role === 'EDITOR') {
     document.getElementById('upload-section').style.display = 'block';
   }
 
   updateSessionChip();
+  loadNamespaces();     // #33 — carrega namespaces disponíveis
   loadDocuments();
   initUpload();
   showView('chat');
 }
 
 // ══ NAVEGAÇÃO ═══════════════════════════════════════════════════════════════
-const ALL_VIEWS = ['chat','history','session','docs','dashboard','users','audit'];
+const ALL_VIEWS = ['chat','history','session','docs','dashboard','users','audit','namespaces'];
 
 function showView(view) {
   ALL_VIEWS.forEach(v => {
@@ -589,6 +658,7 @@ function showView(view) {
   if (view === 'dashboard') loadDashboard();
   if (view === 'history') loadHistory();
   if (view === 'audit') loadAudit();
+  if (view === 'namespaces') loadNamespacesView();
 }
 
 // ══ UPLOAD ══════════════════════════════════════════════════════════════════
@@ -614,11 +684,14 @@ async function uploadFile(file) {
   document.getElementById('progressBar').style.width = '80%';
   const form = new FormData(); form.append('file', file);
   try {
-    const res = await fetch(API + '/api/documents', {
+    const url = API + '/api/documents?namespaceId=' + encodeURIComponent(currentNamespaceId);
+    const res = await fetch(url, {
       method: 'POST', headers: {'Authorization':'Bearer ' + token}, body: form
     });
     if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
-    showToast('✓ ' + file.name + ' indexado!', 'success');
+    const result = await res.json();
+    const versionMsg = result.version > 1 ? ` (v${result.version})` : '';
+    showToast('✓ ' + file.name + ' indexado' + versionMsg + '!', 'success');
     loadDocuments();
   } catch(err) { showToast('Erro: ' + err.message, 'error'); }
   finally {
@@ -632,7 +705,8 @@ let docsCache = [];
 
 async function loadDocuments() {
   try {
-    const res = await fetch(API + '/api/documents', {headers: {'Authorization':'Bearer ' + token}});
+    const url = API + '/api/documents?namespaceId=' + encodeURIComponent(currentNamespaceId);
+    const res = await fetch(url, {headers: {'Authorization':'Bearer ' + token}});
     docsCache = await res.json();
     renderDocsSidebar(docsCache);
   } catch(err) { console.error(err); }
@@ -644,13 +718,16 @@ function renderDocsSidebar(docs) {
   list.innerHTML = docs.map(doc => {
     const isPdf = doc.mimeType === 'application/pdf';
     const canDelete = currentUser.role === 'ADMIN';
+    const vBadge = doc.version > 1
+      ? `<span class="version-badge">v${doc.version}</span>`
+      : `<span class="version-badge v1">v1</span>`;
     return `<div class="doc-item">
       <div class="doc-icon ${isPdf?'pdf':'csv'}">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
-        <div class="doc-name" title="${doc.fileName}">${doc.fileName}</div>
+        <div class="doc-name" title="${doc.fileName}">${escHtml(doc.fileName)}${vBadge}</div>
         <div class="doc-meta">${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
-      ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${doc.fileName}')">✕</button>` : ''}
+      ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">✕</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -661,13 +738,20 @@ function renderDocsPanel() {
   el.innerHTML = docsCache.map(doc => {
     const isPdf = doc.mimeType === 'application/pdf';
     const canDelete = currentUser.role === 'ADMIN';
+    const vBadge = `<span class="version-badge${doc.version > 1 ? '' : ' v1'}">v${doc.version}</span>`;
+    const histBtn = doc.hasHistory
+      ? `<button class="action-btn" onclick="viewVersionHistory('${doc.id}','${escHtml(doc.fileName)}')" title="Ver histórico de versões">📜 Versões</button>`
+      : '';
     return `<div class="doc-item" style="background:var(--surface2);margin-bottom:6px;border-radius:8px;padding:12px">
       <div class="doc-icon ${isPdf?'pdf':'csv'}" style="width:34px;height:34px;font-size:15px">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
-        <div class="doc-name" style="font-size:13px">${doc.fileName}</div>
+        <div class="doc-name" style="font-size:13px">${escHtml(doc.fileName)}${vBadge}</div>
         <div class="doc-meta">${doc.mimeType} · ${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
-      ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc('${doc.id}','${doc.fileName}')">🗑 Remover</button>` : ''}
+      <div style="display:flex;gap:6px">
+        ${histBtn}
+        ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">🗑 Remover</button>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -712,7 +796,7 @@ async function sendMessage() {
     const res = await fetch(API + '/api/chat', {
       method: 'POST',
       headers: {'Authorization':'Bearer ' + token, 'Content-Type':'application/json'},
-      body: JSON.stringify({question, sessionId: currentSessionId})
+      body: JSON.stringify({question, sessionId: currentSessionId, namespaceId: currentNamespaceId})
     });
     const data = await res.json();
     removeTyping(tid);
@@ -932,6 +1016,149 @@ async function loadDashboard() {
   } catch(err) {
     document.getElementById('metrics-grid').innerHTML = '<div style="color:var(--red);font-size:12px">Erro ao carregar métricas.</div>';
   }
+}
+
+// ══ NAMESPACES (#33) ═════════════════════════════════════════════════════════
+async function loadNamespaces() {
+  try {
+    const res = await fetch(API + '/api/namespaces', {headers: {'Authorization':'Bearer ' + token}});
+    namespacesCache = await res.json();
+    renderNamespaceSelector();
+  } catch(err) { console.error('Erro ao carregar namespaces', err); }
+}
+
+function renderNamespaceSelector() {
+  const sel = document.getElementById('ns-select');
+  sel.innerHTML = namespacesCache.map(ns =>
+    `<option value="${ns.id}">${ns.displayName}${ns.slug === 'default' ? ' (padrão)' : ''}</option>`
+  ).join('');
+  sel.value = currentNamespaceId;
+}
+
+function changeNamespace(nsId) {
+  currentNamespaceId = nsId;
+  loadDocuments();   // recarrega docs do novo namespace
+}
+
+async function loadNamespacesView() {
+  await loadNamespaces();
+  const container = document.getElementById('namespaces-list');
+  if (!namespacesCache.length) {
+    container.innerHTML = '<div class="empty-state"><div class="ei">🗂️</div><p>Nenhum namespace.</p></div>';
+    return;
+  }
+  container.innerHTML = namespacesCache.map(ns => {
+    const isDefault = ns.slug === 'default';
+    const canDelete = currentUser.role === 'ADMIN' && !isDefault;
+    return `<div class="ns-card">
+      <div class="ns-icon">🗂️</div>
+      <div class="ns-info">
+        <div class="ns-slug">${ns.slug} ${isDefault ? '<span class="ns-default-badge">padrão</span>' : ''}</div>
+        <div class="ns-name">${escHtml(ns.displayName)}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="clear-btn" onclick="changeNamespace('${ns.id}');showView('docs')">📂 Ver docs</button>
+        ${canDelete ? `<button class="clear-btn" style="border-color:var(--red);color:var(--red)" onclick="deleteNamespace('${ns.id}','${escHtml(ns.displayName)}')">🗑 Remover</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openCreateNsModal() {
+  ['new-ns-slug','new-ns-name'].forEach(id => document.getElementById(id).value = '');
+  ['err-ns-slug','err-ns-name'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none'; el.textContent = '';
+  });
+  document.getElementById('btn-create-ns').disabled = false;
+  document.getElementById('modal-create-ns').style.display = 'flex';
+  setTimeout(() => document.getElementById('new-ns-slug').focus(), 50);
+}
+
+function closeCreateNsModal() {
+  document.getElementById('modal-create-ns').style.display = 'none';
+}
+
+function closeNsModalOnOverlay(e) {
+  if (e.target === document.getElementById('modal-create-ns')) closeCreateNsModal();
+}
+
+async function submitCreateNs() {
+  const slug = document.getElementById('new-ns-slug').value.trim();
+  const displayName = document.getElementById('new-ns-name').value.trim();
+  let valid = true;
+  if (!slug) { showFieldErr('err-ns-slug', 'Slug obrigatório.'); valid = false; }
+  else if (!/^[a-z0-9-]+$/.test(slug)) { showFieldErr('err-ns-slug', 'Use apenas letras minúsculas, números e hífen.'); valid = false; }
+  else hideFieldErr('err-ns-slug');
+  if (!displayName) { showFieldErr('err-ns-name', 'Nome obrigatório.'); valid = false; }
+  else hideFieldErr('err-ns-name');
+  if (!valid) return;
+
+  const btn = document.getElementById('btn-create-ns');
+  btn.disabled = true; btn.textContent = 'Criando…';
+  try {
+    const res = await fetch(API + '/api/namespaces', {
+      method: 'POST',
+      headers: {'Authorization':'Bearer ' + token, 'Content-Type':'application/json'},
+      body: JSON.stringify({slug, displayName})
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showFieldErr('err-ns-slug', data.message || 'Erro ao criar namespace.');
+      return;
+    }
+    closeCreateNsModal();
+    showToast('Namespace "' + displayName + '" criado!', 'success');
+    loadNamespacesView();
+  } catch(err) {
+    showFieldErr('err-ns-slug', 'Erro de conexão.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Criar namespace';
+  }
+}
+
+async function deleteNamespace(id, name) {
+  if (!confirm(`Remover namespace "${name}"? Só é possível se não houver documentos ativos.`)) return;
+  try {
+    const res = await fetch(API + '/api/namespaces/' + id, {
+      method: 'DELETE', headers: {'Authorization':'Bearer ' + token}
+    });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.message); }
+    showToast('Namespace removido.', 'success');
+    // Se era o namespace ativo, volta para o padrão
+    if (currentNamespaceId === id) {
+      currentNamespaceId = '00000000-0000-0000-0000-000000000010';
+    }
+    loadNamespacesView();
+    loadNamespaces();
+  } catch(err) { showToast('Erro: ' + err.message, 'error'); }
+}
+
+async function viewVersionHistory(docId, fileName) {
+  try {
+    const res = await fetch(API + '/api/documents/' + docId + '/versions', {
+      headers: {'Authorization':'Bearer ' + token}
+    });
+    const versions = await res.json();
+    const html = versions.map(v => {
+      const badge = v.version > 1 ? `v${v.version}` : 'v1 (original)';
+      const date = fmtDateTime(v.ingestedAt);
+      return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span><span class="version-badge${v.version === 1 ? ' v1' : ''}">${badge}</span></span>
+        <span style="font-size:11px;color:var(--muted);font-family:monospace">${date}</span>
+      </div>`;
+    }).join('');
+    alert(`Histórico de versões: ${fileName}\n\n${versions.map(v => `v${v.version} — ${fmtDateTime(v.ingestedAt)}`).join('\n')}`);
+  } catch(err) { showToast('Erro ao carregar versões.', 'error'); }
+}
+
+function showFieldErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideFieldErr(id) {
+  const el = document.getElementById(id);
+  el.textContent = ''; el.style.display = 'none';
 }
 
 // ══ CRIAR USUÁRIO (modal) ════════════════════════════════════════════════════

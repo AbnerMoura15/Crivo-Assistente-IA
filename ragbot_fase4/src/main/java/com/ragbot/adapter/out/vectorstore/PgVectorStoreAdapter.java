@@ -19,13 +19,13 @@ import java.util.stream.Collectors;
 /**
  * Adapter de busca vetorial com pgvector.
  *
- * Fase 8:
- * - findSimilar()        → retorna ScoredChunk com cosine similarity (1 - distância)
- * - findSimilarHybrid()  → score combinado: α * vetorial + (1-α) * BM25 ts_rank
+ * Fase 10 (#33 — Namespaces):
+ * - findSimilar() e findSimilarHybrid() filtram por namespace via JOIN com documents.
+ *   Isso garante que chunks de um namespace nunca aparecem em perguntas de outro.
  *
  * Fase anterior (#29 Soft Delete):
  * - save()               → insere com status='ACTIVE'
- * - deleteByDocumentId() → UPDATE status='DELETED' (não apaga fisicamente)
+ * - deleteByDocumentId() → UPDATE status='DELETED'
  */
 @Component
 public class PgVectorStoreAdapter implements VectorStorePort {
@@ -54,48 +54,51 @@ public class PgVectorStoreAdapter implements VectorStorePort {
     }
 
     /**
-     * Busca vetorial pura — score = 1 - cosine_distance.
-     * Passa o vetor duas vezes: uma para ORDER BY, outra para o SELECT do score.
+     * Busca vetorial pura escopada ao namespace (#33).
+     * JOIN com documents para garantir isolamento por namespace_id.
      */
     @Override
-    public List<ScoredChunk> findSimilar(List<Float> queryEmbedding, int topK) {
+    public List<ScoredChunk> findSimilar(List<Float> queryEmbedding, int topK, String namespaceId) {
         String vectorStr = toVectorString(queryEmbedding);
         return jdbc.query(
                 """
-                SELECT id, document_id, content, embedding::text, metadata::text,
-                       1.0 - (embedding <=> ?::vector) AS score
-                FROM chunks
-                WHERE status = 'ACTIVE'
-                ORDER BY embedding <=> ?::vector
+                SELECT c.id, c.document_id, c.content, c.embedding::text, c.metadata::text,
+                       1.0 - (c.embedding <=> ?::vector) AS score
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE c.status = 'ACTIVE'
+                  AND d.status = 'ACTIVE'
+                  AND d.namespace_id = ?
+                ORDER BY c.embedding <=> ?::vector
                 LIMIT ?
                 """,
                 this::mapScoredRow,
-                vectorStr, vectorStr, topK
+                vectorStr, namespaceId, vectorStr, topK
         );
     }
 
     /**
-     * Busca híbrida: score = semanticWeight * similarity + (1-semanticWeight) * ts_rank.
-     *
-     * Calcula tsvector em runtime com 'simple' (universalmente disponível em qualquer
-     * instalação PostgreSQL, sem dependência de dicionários externos).
-     * plainto_tsquery() aceita texto livre sem operadores especiais.
+     * Busca híbrida escopada ao namespace (#33).
+     * Score = semanticWeight * similarity + (1-semanticWeight) * ts_rank.
      */
     @Override
     public List<ScoredChunk> findSimilarHybrid(List<Float> queryEmbedding, String keywords,
-                                               int topK, double semanticWeight) {
+                                               int topK, double semanticWeight, String namespaceId) {
         String vectorStr = toVectorString(queryEmbedding);
         double bm25Weight = 1.0 - semanticWeight;
 
         String sql = """
-                SELECT id, document_id, content, embedding::text, metadata::text,
-                       (? * (1.0 - (embedding <=> ?::vector))
-                        + ? * COALESCE(ts_rank(to_tsvector('simple', content),
+                SELECT c.id, c.document_id, c.content, c.embedding::text, c.metadata::text,
+                       (? * (1.0 - (c.embedding <=> ?::vector))
+                        + ? * COALESCE(ts_rank(to_tsvector('simple', c.content),
                                        plainto_tsquery('simple', ?)), 0.0)) AS score
-                FROM chunks
-                WHERE status = 'ACTIVE'
-                ORDER BY (? * (1.0 - (embedding <=> ?::vector))
-                          + ? * COALESCE(ts_rank(to_tsvector('simple', content),
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE c.status = 'ACTIVE'
+                  AND d.status = 'ACTIVE'
+                  AND d.namespace_id = ?
+                ORDER BY (? * (1.0 - (c.embedding <=> ?::vector))
+                          + ? * COALESCE(ts_rank(to_tsvector('simple', c.content),
                                          plainto_tsquery('simple', ?)), 0.0)) DESC
                 LIMIT ?
                 """;
@@ -103,6 +106,8 @@ public class PgVectorStoreAdapter implements VectorStorePort {
         return jdbc.query(sql, this::mapScoredRow,
                 // SELECT score
                 semanticWeight, vectorStr, bm25Weight, keywords,
+                // WHERE namespace
+                namespaceId,
                 // ORDER BY score
                 semanticWeight, vectorStr, bm25Weight, keywords,
                 topK

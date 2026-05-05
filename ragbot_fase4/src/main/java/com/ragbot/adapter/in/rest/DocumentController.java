@@ -5,6 +5,8 @@ import com.ragbot.application.port.in.IngestDocumentUseCase;
 import com.ragbot.application.port.in.ListDocumentsUseCase;
 import com.ragbot.application.service.AuditLogService;
 import com.ragbot.domain.entity.AuditAction;
+import com.ragbot.domain.entity.Document;
+import com.ragbot.domain.entity.Namespace;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,43 +29,79 @@ public class DocumentController {
     private final ListDocumentsUseCase listUseCase;
     private final AuditLogService auditLogService;
 
-    public DocumentController(IngestDocumentUseCase ingestUseCase, ListDocumentsUseCase listUseCase,
-                               AuditLogService auditLogService) {
+    public DocumentController(IngestDocumentUseCase ingestUseCase,
+                              ListDocumentsUseCase listUseCase,
+                              AuditLogService auditLogService) {
         this.ingestUseCase = ingestUseCase;
         this.listUseCase = listUseCase;
         this.auditLogService = auditLogService;
     }
 
+    /**
+     * Upload de documento para um namespace (#33).
+     * Se já existir um ACTIVE com o mesmo nome no namespace, cria nova versão (#26).
+     *
+     * @param namespaceId namespace de destino (default se omitido)
+     */
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<RestDtos.IngestResponse> upload(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "namespaceId", defaultValue = Namespace.DEFAULT_ID) String namespaceId,
             Authentication auth,
             HttpServletRequest request) throws IOException {
 
-        log.info("Upload recebido: {} ({} bytes)", file.getOriginalFilename(), file.getSize());
+        log.info("Upload recebido: {} ({} bytes) namespace={}",
+                file.getOriginalFilename(), file.getSize(), namespaceId);
 
         String docId = ingestUseCase.ingest(
                 file.getOriginalFilename(),
                 file.getContentType(),
                 file.getInputStream(),
-                file.getSize()
+                file.getSize(),
+                namespaceId
         );
+
+        // Busca versão para incluir na resposta
+        Document created = listUseCase.listAll().stream()
+                .filter(d -> d.id().equals(docId))
+                .findFirst()
+                .orElse(null);
+        int version = created != null ? created.version() : 1;
 
         String actor = auth != null ? auth.getName() : "anônimo";
         auditLogService.record(actor, AuditAction.DOCUMENT_UPLOAD, docId, "DOCUMENT",
-                "arquivo=" + file.getOriginalFilename(), request.getRemoteAddr());
+                "arquivo=" + file.getOriginalFilename() + " v" + version + " ns=" + namespaceId,
+                request.getRemoteAddr());
 
         return ResponseEntity.ok(new RestDtos.IngestResponse(docId,
-                "Documento '" + file.getOriginalFilename() + "' indexado com sucesso."));
+                "Documento '" + file.getOriginalFilename() + "' indexado com sucesso (v" + version + ").",
+                version));
     }
 
+    /**
+     * Lista documentos ACTIVE.
+     *
+     * @param namespaceId filtrar por namespace; se omitido, retorna todos os namespaces
+     */
     @GetMapping
-    public ResponseEntity<List<RestDtos.DocumentResponse>> list() {
-        List<RestDtos.DocumentResponse> docs = listUseCase.listAll()
-                .stream()
-                .map(RestDtos.DocumentResponse::from)
-                .toList();
-        return ResponseEntity.ok(docs);
+    public ResponseEntity<List<RestDtos.DocumentResponse>> list(
+            @RequestParam(required = false) String namespaceId) {
+        List<Document> docs = namespaceId != null
+                ? listUseCase.listByNamespace(namespaceId)
+                : listUseCase.listAll();
+        return ResponseEntity.ok(docs.stream().map(RestDtos.DocumentResponse::from).toList());
+    }
+
+    /**
+     * Histórico de versões de um documento (#26).
+     * Retorna todas as versões (ACTIVE + SUPERSEDED), mais nova primeiro.
+     */
+    @GetMapping("/{id}/versions")
+    public ResponseEntity<List<RestDtos.DocumentResponse>> versionHistory(@PathVariable String id) {
+        return ResponseEntity.ok(
+                listUseCase.listVersionHistory(id)
+                        .stream().map(RestDtos.DocumentResponse::from).toList()
+        );
     }
 
     @DeleteMapping("/{id}")

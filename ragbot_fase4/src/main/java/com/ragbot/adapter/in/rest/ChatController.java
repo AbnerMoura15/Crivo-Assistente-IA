@@ -3,12 +3,11 @@ package com.ragbot.adapter.in.rest;
 import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.application.service.ChatHistoryService;
-import com.ragbot.domain.entity.ChatSession;
+import com.ragbot.domain.entity.Namespace;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -29,9 +28,12 @@ public class ChatController {
             Authentication auth) {
 
         String username = auth != null ? auth.getName() : "anônimo";
+        String namespaceId = request.namespaceId() != null
+                ? request.namespaceId()
+                : Namespace.DEFAULT_ID;
 
         QueryChatUseCase.ChatResult result = queryChatUseCase.queryWithSession(
-                request.question(), request.sessionId(), username);
+                request.question(), request.sessionId(), username, namespaceId);
 
         return ResponseEntity.ok(new RestDtos.ChatResponse(
                 result.answer(), result.interactionId(), result.sessionId()));

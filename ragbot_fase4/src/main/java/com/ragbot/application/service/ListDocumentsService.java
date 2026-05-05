@@ -25,25 +25,44 @@ public class ListDocumentsService implements ListDocumentsUseCase {
     }
 
     @Override
+    public List<Document> listByNamespace(String namespaceId) {
+        return storagePort.findByNamespace(namespaceId);
+    }
+
+    @Override
     public List<Document> listAll() {
-        // findAll() já filtra apenas ACTIVE — vide LocalDocumentStorageAdapter
         return storagePort.findAll();
     }
 
     @Override
-    public void delete(String documentId) {
-        // #29: valida existência antes de deletar (findAll retorna apenas ACTIVE)
-        boolean exists = storagePort.findAll().stream()
-                .anyMatch(doc -> doc.id().equals(documentId));
+    public List<Document> listVersionHistory(String documentId) {
+        // Busca raiz: pode ser o próprio doc (v1) ou o original_document_id
+        List<Document> allActive = storagePort.findAll();
+        Document doc = allActive.stream()
+                .filter(d -> d.id().equals(documentId))
+                .findFirst()
+                .orElseGet(() -> {
+                    // Pode ser uma versão antiga (SUPERSEDED) — busca pelo rootId
+                    List<Document> history = storagePort.findVersionHistory(documentId);
+                    return history.stream()
+                            .filter(d -> d.id().equals(documentId))
+                            .findFirst()
+                            .orElseThrow(() -> new DocumentNotFoundException(documentId));
+                });
 
+        return storagePort.findVersionHistory(doc.rootId());
+    }
+
+    @Override
+    public void delete(String documentId) {
+        boolean exists = storagePort.findAll().stream()
+                .anyMatch(d -> d.id().equals(documentId));
         if (!exists) {
             throw new DocumentNotFoundException(documentId);
         }
 
-        // Ordem importa: chunks primeiro, depois o documento
-        // Assim a integridade é mantida mesmo se houver falha parcial
-        vectorStorePort.deleteByDocumentId(documentId);  // soft delete nos chunks
-        storagePort.delete(documentId);                   // soft delete no documento
+        vectorStorePort.deleteByDocumentId(documentId);
+        storagePort.delete(documentId);
 
         log.info("Documento removido (soft delete): {}", documentId);
     }

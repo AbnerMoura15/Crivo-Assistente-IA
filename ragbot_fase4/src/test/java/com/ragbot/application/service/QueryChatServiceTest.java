@@ -10,6 +10,7 @@ import com.ragbot.application.port.out.VectorStorePort;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Chunk;
 import com.ragbot.domain.entity.Document;
+import com.ragbot.domain.entity.Namespace;
 import com.ragbot.domain.entity.ScoredChunk;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,6 +50,12 @@ class QueryChatServiceTest {
     private static final ChatSession FAKE_SESSION = new ChatSession(
             "sess-1", "user", Instant.now(), Instant.now(), List.of());
 
+    /** Documento simples no namespace padrão, v1. */
+    private static Document doc(String id, String name) {
+        return new Document(id, name, "application/pdf", "/path", 1024L, Instant.now(),
+                Namespace.DEFAULT_ID, 1, null);
+    }
+
     @BeforeEach
     void setUp() {
         ChatHistoryService chatHistoryService = new ChatHistoryService(chatHistoryPort);
@@ -77,7 +84,8 @@ class QueryChatServiceTest {
     @Test
     @DisplayName("sem documentos deve retornar mensagem informativa e persistir no histórico")
     void shouldReturnMessageWhenNoDocumentsFound() {
-        when(documentStoragePort.findAll()).thenReturn(List.of());
+        // #33: QueryChatService agora chama findByNamespace, não findAll
+        when(documentStoragePort.findByNamespace(anyString())).thenReturn(List.of());
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
 
         QueryChatUseCase.ChatResult result = service.queryWithSession("Pergunta X?", null, "user");
@@ -94,10 +102,10 @@ class QueryChatServiceTest {
     void shouldCallLlmAndRecordInteraction() {
         Chunk chunk = new Chunk("1", "doc1", "Conteúdo relevante.", List.of(), Map.of("source", "manual.pdf"));
 
-        when(documentStoragePort.findAll()).thenReturn(List.of(
-                new Document("doc1", "manual.pdf", "application/pdf", "/path", 1024L, Instant.now())));
+        when(documentStoragePort.findByNamespace(anyString())).thenReturn(List.of(doc("doc1", "manual.pdf")));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
-        when(vectorStorePort.findSimilar(anyList(), anyInt()))
+        // #33: findSimilar agora recebe 3 args (list, topK, namespaceId)
+        when(vectorStorePort.findSimilar(anyList(), anyInt(), anyString()))
                 .thenReturn(List.of(new ScoredChunk(chunk, 0.9)));
         when(llmPort.complete(anyString(), anyList())).thenReturn("Resposta gerada");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-abc");
@@ -117,7 +125,7 @@ class QueryChatServiceTest {
                 "sess-existing", "joao", Instant.now(), Instant.now(), List.of());
         when(chatHistoryPort.findSession("sess-existing")).thenReturn(Optional.of(existingSession));
         when(chatHistoryPort.loadMessages("sess-existing")).thenReturn(List.of());
-        when(documentStoragePort.findAll()).thenReturn(List.of());
+        when(documentStoragePort.findByNamespace(anyString())).thenReturn(List.of());
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-x");
 
         QueryChatUseCase.ChatResult result = service.queryWithSession("Oi?", "sess-existing", "joao");
@@ -132,10 +140,11 @@ class QueryChatServiceTest {
         Chunk chunk = new Chunk("1", "doc1", "CPF 123.456.789-00 salário R$ 5.000,00",
                 List.of(), Map.of("source", "rh.csv"));
 
-        when(documentStoragePort.findAll()).thenReturn(List.of(
-                new Document("doc1", "rh.csv", "text/csv", "/path", 512L, Instant.now())));
+        when(documentStoragePort.findByNamespace(anyString())).thenReturn(
+                List.of(new Document("doc1", "rh.csv", "text/csv", "/path", 512L, Instant.now(),
+                        Namespace.DEFAULT_ID, 1, null)));
         when(embeddingPort.embed(anyString())).thenReturn(List.of(0.1f, 0.2f));
-        when(vectorStorePort.findSimilar(anyList(), anyInt()))
+        when(vectorStorePort.findSimilar(anyList(), anyInt(), anyString()))
                 .thenReturn(List.of(new ScoredChunk(chunk, 0.9)));
         when(llmPort.complete(anyString(), anyList())).thenReturn("resposta");
         when(observabilityService.recordInteraction(any(), any(), any(), any())).thenReturn("id-1");
