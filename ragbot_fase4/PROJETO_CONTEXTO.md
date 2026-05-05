@@ -1,7 +1,7 @@
 # RAGBot — Contexto do Projeto para Claude
 
 > **USO:** Cole este arquivo no início de cada sessão para economizar tokens.
-> Última atualização: Fase 6 concluída (#11 Audit Log + #13 Chat History)
+> Última atualização: Fase 7 concluída (Frontend completo + dashboard RAG + auditoria + segurança 401)
 
 ---
 
@@ -99,6 +99,7 @@ enum AuditAction { LOGIN_SUCCESS, LOGIN_FAILED, REGISTER,
 | PUT | /api/users/{id}/deactivate | ADMIN | Desativa |
 | PUT | /api/users/{id}/activate | ADMIN | Reativa |
 | GET | /api/admin/audit-log | ADMIN | Audit log (filtros: actor, action, limit) |
+| GET | /api/admin/dashboard | ADMIN | Métricas RAG (interactions, feedback, rate, tempo) |
 | GET | /actuator/health | público | Health geral |
 | GET | /actuator/health/ragbot | auth | Docs/chunks indexados |
 
@@ -208,14 +209,14 @@ $env:JWT_SECRET     = "min-32-chars!!"
 
 1, 2, 3 (Segurança) · 5, 6 (Custos) · 7, 8, 9 (Observabilidade RAG) ·
 11→bugfix AppConfig · 12 (Request ID) · 18, 19, 20, 21 (Infra) ·
-29 (Soft delete) · 31 (PII/LGPD) · **#11 (Audit Log) · #13 (Chat History no banco)**
+29 (Soft delete) · 31 (PII/LGPD) · **#11 (Audit Log) · #13 (Chat History no banco)** ·
+**Fase 7: Dashboard RAG + Auditoria + Histórico + Frontend completo**
 
 ### 🔲 Pendente (por prioridade)
 
 | # | Item | Esforço |
 |---|---|---|
 | 4 | Controle de tokens por sessão/usuário | 🟡 |
-| 10 | Dashboard qualidade RAG (tela) | 🟡 |
 | 15 | Testes unitários completos | 🔴 |
 | 16 | Testes integração (Testcontainers) | 🔴 |
 | 22 | Fila ingestão assíncrona | 🟡 |
@@ -248,6 +249,8 @@ $env:JWT_SECRET     = "min-32-chars!!"
 5. PII: nunca enviar texto não-mascarado a APIs externas
 6. QueryChatUseCase.queryWithSession() recebe sessionId (nullable) e retorna ChatResult com sessionId
 7. AuditLogService.record() nunca lança exceção — falha silenciosamente no log
+8. SecurityConfig: authenticationEntryPoint configurado para retornar 401 (não 403) para anônimos
+9. @WebMvcTest com segurança real: usar TestWebSecurityConfig (@Import SecurityConfig); sem segurança: TestSecurityConfig
 
 ## Iniciar
 
