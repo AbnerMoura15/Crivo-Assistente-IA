@@ -118,6 +118,41 @@ public class DocumentController {
         );
     }
 
+    /**
+     * Reprocessa um documento que falhou na ingestão (#22-retry).
+     *
+     * Retorna 202 se o reprocessamento foi iniciado,
+     * 404 se o documento não existe,
+     * 409 se o documento não está em estado FAILED.
+     */
+    @PostMapping("/{id}/retry")
+    public ResponseEntity<RestDtos.IngestResponse> retry(
+            @PathVariable String id, Authentication auth, HttpServletRequest request) {
+
+        boolean started = listUseCase.retryProcessing(id);
+        if (!started) {
+            // pode ser 404 ou 409 — tenta distinguir pelo findById
+            return listUseCase.findById(id)
+                    .map(doc -> ResponseEntity.status(HttpStatus.CONFLICT)
+                            .<RestDtos.IngestResponse>body(new RestDtos.IngestResponse(
+                                    id, "Documento não está em estado FAILED (status atual: "
+                                    + doc.processingStatus() + ")", doc.version(), doc.processingStatus())))
+                    .orElseGet(() -> ResponseEntity.notFound().build());
+        }
+
+        String actor = auth != null ? auth.getName() : "anônimo";
+        auditLogService.record(actor, AuditAction.DOCUMENT_UPLOAD, id, "DOCUMENT",
+                "retry ingestão id=" + id, request.getRemoteAddr());
+
+        return listUseCase.findById(id)
+                .map(doc -> ResponseEntity.status(HttpStatus.ACCEPTED)
+                        .body(new RestDtos.IngestResponse(
+                                id, "Reprocessamento iniciado para '" + doc.fileName() + "'…",
+                                doc.version(), "PROCESSING")))
+                .orElse(ResponseEntity.accepted()
+                        .body(new RestDtos.IngestResponse(id, "Reprocessamento iniciado…", 0, "PROCESSING")));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, Authentication auth,
                                        HttpServletRequest request) {

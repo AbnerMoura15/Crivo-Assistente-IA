@@ -40,16 +40,31 @@ public class QueryChatService implements QueryChatUseCase {
     private static final Logger log = LoggerFactory.getLogger(QueryChatService.class);
 
     private static final String SYSTEM_PROMPT = """
-            Você é um assistente inteligente de suporte interno de uma fábrica.
-            Responda perguntas com base exclusivamente nos documentos internos fornecidos no contexto.
+            Você é um especialista operacional sênior com conhecimento completo sobre os processos,\s
+            regras e procedimentos da organização.
 
-            Regras:
-            - Use APENAS as informações do contexto abaixo para responder.
-            - Se não houver informação suficiente, diga: "Não encontrei essa informação nos documentos indexados."
-            - Seja objetivo, claro e profissional.
-            - Quando relevante, mencione qual documento contém a informação.
-            - Responda sempre em português do Brasil.
-            - Tokens como [CPF], [EMAIL], [TELEFONE], [VALOR] são dados protegidos pela LGPD.
+            Ao responder, siga rigorosamente estas diretrizes:
+
+            1. USE EXCLUSIVAMENTE as informações fornecidas no contexto abaixo.\s
+               Nunca invente, suponha ou extrapole além do que está ali.
+
+            2. ENTREGUE a informação de forma direta, natural e autoritativa —\s
+               como se você mesmo fosse o autor do conteúdo.\s
+               Integre o conhecimento na resposta sem citar de onde ele veio.
+
+            3. NUNCA mencione nomes de arquivos, fontes, seções, números de linha ou metadados,\s
+               a menos que o usuário pergunte explicitamente "de onde vem essa informação".
+
+            4. EVITE expressões como "o documento diz", "conforme o arquivo", "o registro indica",\s
+               "nos documentos" ou qualquer referência à origem do conteúdo.
+
+            5. SE a informação não estiver disponível no contexto fornecido,\s
+               responda apenas: "Não tenho essa informação disponível no momento."
+
+            6. TOKENS como [CPF], [EMAIL], [TELEFONE], [VALOR] são dados protegidos pela LGPD.\s
+               Nunca tente deduzi-los, recompô-los ou comentar sobre eles.
+
+            7. Responda sempre em português do Brasil, de forma objetiva e profissional.
             """;
 
     private final EmbeddingPort          embeddingPort;
@@ -117,7 +132,7 @@ public class QueryChatService implements QueryChatUseCase {
         List<Chunk> relevantChunks = retrieveAndRerank(queryEmbedding, question, namespaceId, cfg);
 
         if (relevantChunks.isEmpty()) {
-            String noChunksAnswer = "Não encontrei essa informação nos documentos indexados.";
+            String noChunksAnswer = "Não tenho essa informação disponível no momento.";
             chatHistoryService.saveUserMessage(session.id(), question);
             chatHistoryService.saveAssistantMessage(session.id(), noChunksAnswer);
             String interactionId = observabilityService.recordInteraction(
@@ -130,11 +145,19 @@ public class QueryChatService implements QueryChatUseCase {
                     PiiMaskingService.MaskResult masked = piiMaskingService.maskWithStats(c.content());
                     if (masked.replacementsCount() > 0)
                         log.debug("PII mascarada: {} substituições", masked.replacementsCount());
-                    return String.format("[Documento: %s]\n%s",
-                            c.metadata().getOrDefault("source", "desconhecido"),
+                    // Label neutro: LLM vê a fonte mas as regras do prompt impedem de citá-la
+                    return String.format("[Fonte: %s]\n%s",
+                            c.metadata().getOrDefault("source", "interno"),
                             masked.maskedText());
                 })
                 .collect(Collectors.joining("\n\n---\n\n"));
+
+        // Fontes únicas para os source chips (item 3.3)
+        List<String> sources = relevantChunks.stream()
+                .map(c -> c.metadata().getOrDefault("source", ""))
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
 
         List<ChatMessage> conversation = buildConversation(dbHistory, question);
         String answer = llmPort.complete(SYSTEM_PROMPT + "\n\nCONTEXTO:\n" + context, conversation);
@@ -145,7 +168,7 @@ public class QueryChatService implements QueryChatUseCase {
                 username, question, answer, relevantChunks);
         tokenUsageService.record(username, question, answer);
 
-        return new ChatResult(answer, interactionId, session.id());
+        return new ChatResult(answer, interactionId, session.id(), sources);
     }
 
     // ── Retrieval + Re-ranking ────────────────────────────────────────────────

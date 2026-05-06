@@ -1,6 +1,7 @@
 package com.ragbot.adapter.in.rest;
 
 import com.ragbot.adapter.in.rest.dto.RestDtos;
+import com.ragbot.adapter.out.ai.groq.GroqLlmAdapter;
 import com.ragbot.domain.exception.DocumentNotFoundException;
 import com.ragbot.domain.exception.InvalidCredentialsException;
 import com.ragbot.domain.exception.TokenLimitExceededException;
@@ -61,6 +62,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<RestDtos.ErrorResponse> handleTokenLimit(TokenLimitExceededException e) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new RestDtos.ErrorResponse("TOKEN_LIMIT_EXCEEDED", e.getMessage()));
+    }
+
+    /** Rate limit da API Groq (429) — mensagem amigável, sem retry. */
+    @ExceptionHandler(GroqLlmAdapter.RateLimitException.class)
+    public ResponseEntity<RestDtos.ErrorResponse> handleGroqRateLimit(GroqLlmAdapter.RateLimitException e) {
+        log.warn("Rate limit Groq: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new RestDtos.ErrorResponse("GROQ_RATE_LIMIT",
+                        "Limite de requisições da IA atingido. Aguarde alguns segundos e tente novamente."));
     }
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)

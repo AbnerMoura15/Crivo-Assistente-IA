@@ -29,5 +29,10 @@ public interface QueryChatUseCase {
         return queryWithSession(question, sessionId, username, Namespace.DEFAULT_ID);
     }
 
-    record ChatResult(String answer, String interactionId, String sessionId) {}
+    record ChatResult(String answer, String interactionId, String sessionId, List<String> sources) {
+        /** Compat para chamadas que não precisam de sources (testes, fallbacks). */
+        public ChatResult(String answer, String interactionId, String sessionId) {
+            this(answer, interactionId, sessionId, List.of());
+        }
+    }
 }

@@ -12,4 +12,6 @@ public interface ChatHistoryPort {
     List<ChatSession> findSessionsByUser(String username, int limit);
     void addMessage(String sessionId, ChatMessage message);
     List<ChatMessage> loadMessages(String sessionId);
+    /** Remove a sessão e todas as mensagens associadas. */
+    void deleteSession(String sessionId);
 }

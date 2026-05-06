@@ -1,8 +1,10 @@
 package com.ragbot.application.service;
 
 import com.ragbot.application.port.out.ChatHistoryPort;
+import com.ragbot.application.port.out.RagConfigPort;
 import com.ragbot.domain.entity.ChatMessage;
 import com.ragbot.domain.entity.ChatSession;
+import com.ragbot.domain.entity.RagConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +12,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -21,6 +25,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("ChatHistoryService")
 class ChatHistoryServiceTest {
 
@@ -33,7 +38,11 @@ class ChatHistoryServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ChatHistoryService(chatHistoryPort);
+        // #25/#16-hist — maxHistoryMessages = 6 via RagConfigService mockado
+        RagConfigPort configPort = mock(RagConfigPort.class);
+        when(configPort.load()).thenReturn(new RagConfig(3, 0.10, 80, true, 0.85, 100_000L, 6));
+        RagConfigService ragConfigService = new RagConfigService(configPort);
+        service = new ChatHistoryService(chatHistoryPort, ragConfigService);
     }
 
     @Test

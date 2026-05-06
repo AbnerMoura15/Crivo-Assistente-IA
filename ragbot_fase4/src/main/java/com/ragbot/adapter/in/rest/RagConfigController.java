@@ -56,7 +56,8 @@ public class RagConfigController {
                 request.shortChunkLength(),
                 request.hybridEnabled(),
                 request.semanticWeight(),
-                request.monthlyTokenLimit()
+                request.monthlyTokenLimit(),
+                request.maxHistoryMessages()
         );
 
         ragConfigService.updateConfig(updated);
@@ -73,11 +74,13 @@ public class RagConfigController {
 
     record RagConfigResponse(
             int topK, double minScore, int shortChunkLength,
-            boolean hybridEnabled, double semanticWeight, long monthlyTokenLimit
+            boolean hybridEnabled, double semanticWeight, long monthlyTokenLimit,
+            int maxHistoryMessages
     ) {
         static RagConfigResponse from(RagConfig c) {
             return new RagConfigResponse(c.topK(), c.minScore(), c.shortChunkLength(),
-                    c.hybridEnabled(), c.semanticWeight(), c.monthlyTokenLimit());
+                    c.hybridEnabled(), c.semanticWeight(), c.monthlyTokenLimit(),
+                    c.maxHistoryMessages());
         }
     }
 
@@ -87,6 +90,7 @@ public class RagConfigController {
             @Min(10) @Max(500)                                  int shortChunkLength,
                                                                 boolean hybridEnabled,
             @DecimalMin("0.0") @DecimalMax("1.0")               double semanticWeight,
-            @Positive                                            long monthlyTokenLimit
+            @Positive                                            long monthlyTokenLimit,
+            @Min(1) @Max(50)                                    int maxHistoryMessages
     ) {}
 }

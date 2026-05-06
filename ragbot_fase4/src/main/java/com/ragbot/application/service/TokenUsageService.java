@@ -45,7 +45,7 @@ public class TokenUsageService {
             @Override
             public com.ragbot.domain.entity.RagConfig getConfig() {
                 return new com.ragbot.domain.entity.RagConfig(
-                        3, 0.10, 80, true, 0.85, fixedMonthlyLimit);
+                        3, 0.10, 80, true, 0.85, fixedMonthlyLimit, 6);
             }
         };
     }

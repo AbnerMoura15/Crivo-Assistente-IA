@@ -21,20 +21,24 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Adapter para Groq — com timeout e retry com backoff exponencial (#6).
  *
  * TIMEOUT (default 30s): sem isso a thread trava indefinidamente.
- * RETRY (default 3x): erros 429/5xx são retentados com espera crescente.
- * NÃO retenta 4xx (exceto 429) — erros do cliente não vão melhorar sozinhos.
+ * RETRY (default 3x): apenas erros 5xx são retentados com espera crescente.
+ * 429 NÃO é retentado — o rate limit por minuto não melhora em 500ms;
+ *   retentar 429 multiplica o consumo e piora o bloqueio (efeito cascata).
+ * NÃO retenta outros 4xx — erros do cliente não vão melhorar sozinhos.
  */
 @Component
 @ConditionalOnProperty(name = "ragbot.ai.provider", havingValue = "groq")
 public class GroqLlmAdapter implements LlmPort {
 
     private static final Logger log = LoggerFactory.getLogger(GroqLlmAdapter.class);
-    private static final Set<Integer> RETRYABLE = Set.of(429, 500, 502, 503, 504);
+    /** Apenas erros de servidor são retentados — 429 (rate limit) NUNCA é retentado. */
+    private static final Set<Integer> RETRYABLE = Set.of(500, 502, 503, 504);
 
     private final WebClient webClient;
     private final String model;
@@ -82,14 +86,24 @@ public class GroqLlmAdapter implements LlmPort {
 
         ChatResponseDto response = webClient.post()
                 .uri("/chat/completions")
-                .bodyValue(new ChatRequestDto(model, messages, 2048, 0.3))
+                .bodyValue(new ChatRequestDto(model, messages, 1024, 0.3))
                 .retrieve()
+                // 429 Rate Limit: NÃO retenta — falha imediata com mensagem clara
                 .onStatus(
-                    s -> s.is4xxClientError() && s.value() != 429,
+                    s -> s.value() == 429,
+                    r -> r.bodyToMono(String.class).defaultIfEmpty("").flatMap(body -> {
+                        log.warn("Groq rate limit atingido (429). Aguarde antes de tentar novamente.");
+                        return Mono.error(new RateLimitException("Groq rate limit por minuto atingido. Aguarde alguns segundos e tente novamente."));
+                    })
+                )
+                // Outros 4xx: falha imediata (erro do cliente)
+                .onStatus(
+                    s -> s.is4xxClientError(),
                     r -> r.bodyToMono(String.class).defaultIfEmpty("").flatMap(body ->
                             Mono.error(new WebClientResponseException(
                                     r.statusCode().value(), body, null, null, null)))
                 )
+                // 5xx: retentável com backoff
                 .onStatus(
                     s -> RETRYABLE.contains(s.value()),
                     r -> r.bodyToMono(String.class).defaultIfEmpty("").flatMap(body ->
@@ -99,9 +113,9 @@ public class GroqLlmAdapter implements LlmPort {
                 .timeout(timeout)
                 .retryWhen(Retry.backoff(maxRetries, Duration.ofMillis(initialBackoffMs))
                         .filter(t -> t instanceof RetryableException)
-                        .doBeforeRetry(s -> log.warn("Groq retry {}/{}: {}",
+                        .doBeforeRetry(s -> log.warn("Groq retry {}/{} (5xx): {}",
                                 s.totalRetries() + 1, maxRetries, s.failure().getMessage())))
-                // Unwrap RetryExhaustedException → expõe a causa original (ex: "429: rate limit")
+                // Unwrap RetryExhaustedException → expõe a causa original
                 .onErrorMap(Exceptions::isRetryExhausted, t -> {
                     Throwable cause = t.getCause();
                     return cause instanceof RuntimeException re ? re
@@ -122,6 +136,11 @@ public class GroqLlmAdapter implements LlmPort {
 
     static class RetryableException extends RuntimeException {
         RetryableException(String msg) { super(msg); }
+    }
+
+    /** Exceção para rate limit 429 — NÃO deve ser retentada. */
+    public static class RateLimitException extends RuntimeException {
+        public RateLimitException(String msg) { super(msg); }
     }
 
     record MessageDto(String role, String content) {}

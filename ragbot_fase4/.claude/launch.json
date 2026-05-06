@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "PostgreSQL (Docker Compose)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up"],
+      "port": 5544
+    },
+    {
+      "name": "Spring Boot API",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["spring-boot:run"],
+      "port": 8080
+    }
+  ]
+}

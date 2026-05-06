@@ -33,6 +33,7 @@ class SoftDeleteServiceTest {
 
     @Mock private DocumentStoragePort storagePort;
     @Mock private VectorStorePort vectorStorePort;
+    @Mock private AsyncIngestWorker asyncIngestWorker;
 
     private ListDocumentsService service;
 
@@ -43,7 +44,7 @@ class SoftDeleteServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ListDocumentsService(storagePort, vectorStorePort);
+        service = new ListDocumentsService(storagePort, vectorStorePort, asyncIngestWorker);
     }
 
     @Test

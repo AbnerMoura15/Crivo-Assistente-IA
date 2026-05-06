@@ -48,7 +48,8 @@ public class PgRagConfigAdapter implements RagConfigPort {
                 intVal(kv, "retrieval.short-chunk-length",     def.shortChunkLength()),
                 boolVal(kv,"retrieval.hybrid.enabled",         def.hybridEnabled()),
                 dblVal(kv, "retrieval.hybrid.semantic-weight", def.semanticWeight()),
-                longVal(kv,"tokens.monthly-limit",             def.monthlyTokenLimit())
+                longVal(kv,"tokens.monthly-limit",             def.monthlyTokenLimit()),
+                intVal(kv, "chat.max-history-messages",        def.maxHistoryMessages())
         );
     }
 
@@ -60,8 +61,10 @@ public class PgRagConfigAdapter implements RagConfigPort {
         upsert("retrieval.hybrid.enabled",         String.valueOf(c.hybridEnabled()));
         upsert("retrieval.hybrid.semantic-weight", String.valueOf(c.semanticWeight()));
         upsert("tokens.monthly-limit",             String.valueOf(c.monthlyTokenLimit()));
-        log.info("RagConfig salvo: topK={} minScore={} hybrid={} semWeight={} limit={}",
-                c.topK(), c.minScore(), c.hybridEnabled(), c.semanticWeight(), c.monthlyTokenLimit());
+        upsert("chat.max-history-messages",        String.valueOf(c.maxHistoryMessages()));
+        log.info("RagConfig salvo: topK={} minScore={} hybrid={} semWeight={} limit={} maxHist={}",
+                c.topK(), c.minScore(), c.hybridEnabled(), c.semanticWeight(),
+                c.monthlyTokenLimit(), c.maxHistoryMessages());
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

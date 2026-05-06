@@ -53,6 +53,22 @@
             <version>${mockwebserver.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers — integração com PostgreSQL+pgvector real (#16) -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
@@ -67,9 +83,44 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>${jacoco.version}</version>
+                <configuration>
+                    <!-- Exclui adapters que precisam de DB/rede real, DTOs gerados e configs Spring -->
+                    <excludes>
+                        <exclude>com/ragbot/adapter/out/**</exclude>
+                        <exclude>com/ragbot/adapter/in/rest/dto/**</exclude>
+                        <exclude>com/ragbot/config/**</exclude>
+                        <exclude>com/ragbot/domain/exception/**</exclude>
+                        <exclude>com/ragbot/RagBotApplication*</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
-                    <execution><goals><goal>prepare-agent</goal></goals></execution>
-                    <execution><id>report</id><phase>test</phase><goals><goal>report</goal></goals></execution>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>test</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
         </plugins>

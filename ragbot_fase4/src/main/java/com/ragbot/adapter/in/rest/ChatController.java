@@ -4,6 +4,7 @@ import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.application.service.ChatHistoryService;
 import com.ragbot.domain.entity.Namespace;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -36,7 +37,7 @@ public class ChatController {
                 request.question(), request.sessionId(), username, namespaceId);
 
         return ResponseEntity.ok(new RestDtos.ChatResponse(
-                result.answer(), result.interactionId(), result.sessionId()));
+                result.answer(), result.interactionId(), result.sessionId(), result.sources()));
     }
 
     @GetMapping("/sessions")
@@ -58,5 +59,17 @@ public class ChatController {
                 .filter(s -> s.username().equals(auth.getName()))
                 .map(s -> ResponseEntity.ok(RestDtos.ChatSessionWithMessagesResponse.from(s)))
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Remove uma sessão e todo seu histórico. Retorna 204 ou 404 se não pertencer ao usuário. */
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable String sessionId,
+            Authentication auth) {
+
+        boolean deleted = chatHistoryService.deleteSession(sessionId, auth.getName());
+        return deleted
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.status(HttpStatus.NOT_FOUND).build();
     }
 }

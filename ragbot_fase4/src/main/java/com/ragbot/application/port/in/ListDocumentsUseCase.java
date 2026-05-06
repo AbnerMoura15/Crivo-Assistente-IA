@@ -22,4 +22,10 @@ public interface ListDocumentsUseCase {
 
     /** Soft-delete do documento e seus chunks. */
     void delete(String documentId);
+
+    /**
+     * Reprocessa um documento com status FAILED (#22-retry).
+     * Retorna false se o documento não existir ou não estiver em estado FAILED.
+     */
+    boolean retryProcessing(String documentId);
 }

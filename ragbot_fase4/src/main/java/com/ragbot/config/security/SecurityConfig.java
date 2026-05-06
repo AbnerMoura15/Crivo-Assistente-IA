@@ -75,6 +75,10 @@ public class SecurityConfig {
                 // Gestão de usuários — apenas ADMIN
                 .requestMatchers("/api/users/**").hasRole("ADMIN")
 
+                // Namespaces — leitura autenticada, criação/remoção apenas ADMIN
+                .requestMatchers(HttpMethod.GET, "/api/namespaces/**").authenticated()
+                .requestMatchers("/api/namespaces/**").hasRole("ADMIN")
+
                 // Audit log e admin — apenas ADMIN
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
 

@@ -66,7 +66,7 @@ class QueryChatServiceTest {
 
         // #25 — RagConfigService com mock port (topK=2, minScore=0.0, hybrid=false)
         RagConfigPort configPort = mock(RagConfigPort.class);
-        when(configPort.load()).thenReturn(new RagConfig(2, 0.0, 80, false, 0.7, 100_000L));
+        when(configPort.load()).thenReturn(new RagConfig(2, 0.0, 80, false, 0.7, 100_000L, 6));
         RagConfigService ragConfigService = new RagConfigService(configPort);
 
         service = new QueryChatService(

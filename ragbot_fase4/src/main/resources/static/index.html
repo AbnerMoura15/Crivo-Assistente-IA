@@ -3,13 +3,19 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>RAGBot — Assistente de Documentos</title>
+<title>Crivo AI — Assistente Corporativo</title>
 <style>
   :root {
     --bg:#0f1117;--surface:#171b26;--surface2:#1e2334;--border:#2a3050;
     --accent:#4f7cff;--accent2:#7b5ea7;--green:#3ecf8e;--red:#ff6b6b;--yellow:#f6c90e;
     --text:#e2e8f0;--muted:#6b7a99;--user-bg:#1a2540;--bot-bg:#1e2334;
     --radius:12px;
+  }
+  /* ── LIGHT MODE ── */
+  :root.light {
+    --bg:#f0f2f7;--surface:#ffffff;--surface2:#f5f7fc;--border:#dde1ef;
+    --accent:#4f7cff;--accent2:#7b5ea7;--green:#1fad6e;--red:#e03e3e;--yellow:#c89a00;
+    --text:#1a1e2e;--muted:#6b7a99;--user-bg:#e8edfb;--bot-bg:#f5f7fc;
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;overflow:hidden}
@@ -84,9 +90,11 @@
   .doc-item:hover .doc-delete{opacity:1}
   .docs-empty{text-align:center;padding:20px 10px;color:var(--muted);font-size:11px;line-height:1.6}
 
-  /* ── LOGOUT ── */
+  /* ── LOGOUT / THEME ── */
   .logout-btn{margin:6px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:11px;display:flex;align-items:center;gap:8px;transition:all .15s}
   .logout-btn:hover{border-color:var(--red);color:var(--red)}
+  .theme-btn{margin:0 6px 2px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;font-size:11px;display:flex;align-items:center;gap:8px;transition:all .15s;width:calc(100% - 12px)}
+  .theme-btn:hover{border-color:var(--accent);color:var(--accent)}
 
   /* ── TOPBAR ── */
   .topbar{padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
@@ -264,6 +272,40 @@
   @keyframes slideIn{from{transform:translateX(16px);opacity:0}to{transform:none;opacity:1}}
   .toast.success{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green)}
   .toast.error{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:var(--red)}
+
+  /* ── MARKDOWN (item 4.1) ── */
+  .msg-bubble h1{font-size:15px;font-weight:700;margin:10px 0 4px}
+  .msg-bubble h2{font-size:14px;font-weight:600;margin:8px 0 4px}
+  .msg-bubble h3{font-size:13px;font-weight:600;margin:6px 0 3px}
+  .msg-bubble ul,.msg-bubble ol{margin:6px 0;padding-left:18px}
+  .msg-bubble li{margin-bottom:2px;font-size:13px}
+  .msg-bubble p{margin:4px 0}
+  .msg-bubble strong{font-weight:600}
+  .msg-bubble em{font-style:italic}
+  .md-code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:monospace;font-size:12px}
+  .md-pre{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto;margin:8px 0;font-family:monospace;font-size:12px;white-space:pre}
+  .md-table-wrap{overflow-x:auto;margin:8px 0;border-radius:6px}
+  .md-table{border-collapse:collapse;font-size:12px;min-width:100%}
+  .md-table th,.md-table td{border:1px solid var(--border);padding:6px 12px;text-align:left;white-space:nowrap}
+  .md-table th{background:var(--surface2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+  .md-table tbody tr:hover td{background:var(--surface2)}
+  hr.md-hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+
+  /* ── SOURCE CHIPS (item 3.3) ── */
+  .source-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+  .source-chip{font-size:10px;background:var(--surface2);border:1px solid var(--border);border-radius:99px;padding:2px 9px;color:var(--muted);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+
+  /* ── LOADING STATE (item 3.2) ── */
+  .typing-hint{font-size:10px;color:var(--muted);margin-top:5px;font-style:italic;text-align:center;animation:fadeIn .3s ease}
+  #question:disabled{opacity:.5;cursor:not-allowed}
+  #send-btn:disabled{background:var(--border);cursor:not-allowed}
+
+  /* ── EMPTY STATE ABNER (item 3.1) ── */
+  .abner-avatar{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;box-shadow:0 4px 20px rgba(79,124,255,.3)}
+  .welcome-suggestions{display:flex;flex-direction:column;gap:7px;margin-top:20px;max-width:380px;margin-left:auto;margin-right:auto}
+  .suggestion-btn{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12px;cursor:pointer;text-align:left;transition:all .15s;color:var(--text);display:flex;align-items:center;gap:10px}
+  .suggestion-btn:hover{border-color:var(--accent);background:rgba(79,124,255,.07);transform:translateY(-1px)}
+  .suggestion-icon{font-size:14px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -272,9 +314,9 @@
 <div id="login-screen">
   <div class="login-card">
     <div class="login-logo">
-      <div class="icon">🤖</div>
-      <h1>RAGBot</h1>
-      <p>Assistente de Documentos Internos</p>
+      <div class="icon">✦</div>
+      <h1>Crivo AI</h1>
+      <p>Assistente Corporativo Inteligente</p>
     </div>
     <div class="form-group">
       <label>Usuário</label>
@@ -296,8 +338,8 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="logo">
-        <div class="logo-icon">🤖</div>
-        <span class="logo-text">RAGBot</span>
+        <div class="logo-icon">✦</div>
+        <span class="logo-text">Crivo AI</span>
       </div>
     </div>
 
@@ -363,6 +405,7 @@
       <div class="docs-empty">Nenhum documento.</div>
     </div>
 
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">🌙 Modo escuro</button>
     <button class="logout-btn" onclick="doLogout()">↩ Sair</button>
   </aside>
 
@@ -373,23 +416,30 @@
     <div id="view-chat" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
       <div class="topbar">
         <div class="topbar-title">
-          💬 Chat
+          ✦ Abner
           <span class="session-chip" id="session-chip" style="display:none"></span>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
+          <div id="token-usage-chip" title="Tokens usados este mês" style="display:none;font-size:10px;font-family:monospace;color:var(--muted);background:var(--surface2);border:1px solid var(--border);padding:3px 10px;border-radius:99px;cursor:default"></div>
           <div class="topbar-status"><div class="status-dot"></div>online</div>
           <button class="clear-btn" onclick="clearChat()">↺ Nova sessão</button>
         </div>
       </div>
       <div class="messages" id="messages">
         <div class="welcome" id="welcome">
-          <div class="welcome-icon">💬</div>
-          <h2>Como posso ajudar?</h2>
-          <p>Faça perguntas sobre os documentos indexados na barra lateral.</p>
-          <div class="welcome-hints">
-            <button class="hint" onclick="useHint(this)">📋 Quais são os procedimentos de segurança?</button>
-            <button class="hint" onclick="useHint(this)">📊 Resuma os dados do relatório enviado.</button>
-            <button class="hint" onclick="useHint(this)">🔍 Quais itens precisam de atenção?</button>
+          <div class="abner-avatar">✦</div>
+          <h2>Bem-vindo ao Crivo.</h2>
+          <p>Eu sou o <strong>Abner</strong>, como posso ajudar?</p>
+          <div class="welcome-suggestions">
+            <button class="suggestion-btn" onclick="useHint('Resuma o conteúdo do documento mais recente.')">
+              <span class="suggestion-icon">📋</span>Resumir o documento mais recente
+            </button>
+            <button class="suggestion-btn" onclick="useHint('Quais são as regras de chargeback?')">
+              <span class="suggestion-icon">💳</span>Quais as regras de chargeback?
+            </button>
+            <button class="suggestion-btn" onclick="useHint('Quais itens precisam de atenção imediata?')">
+              <span class="suggestion-icon">🔍</span>Quais itens precisam de atenção?
+            </button>
           </div>
         </div>
       </div>
@@ -638,6 +688,21 @@
           </div>
         </div>
 
+        <!-- Histórico -->
+        <div class="config-section">
+          <div class="config-section-title">💬 Histórico de Chat</div>
+          <div class="config-field">
+            <label>Mensagens no histórico enviadas ao LLM</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <input type="range" id="cfg-maxHistory" min="1" max="50" step="1" value="6"
+                     oninput="document.getElementById('lbl-maxHistory').textContent = this.value"
+                     style="flex:1"/>
+              <span id="lbl-maxHistory" style="min-width:28px;text-align:center;font-weight:600">6</span>
+            </div>
+            <div class="hint-text">Limitar o histórico reduz consumo de tokens. Mais mensagens = contexto mais rico, mas mais tokens por requisição.</div>
+          </div>
+        </div>
+
         <div class="config-save-bar">
           <button class="clear-btn" onclick="loadRagConfig()">Cancelar alterações</button>
           <button id="btn-save-config" class="btn-primary" style="padding:9px 24px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;border:none" onclick="saveRagConfig()">
@@ -702,6 +767,28 @@ function doLogout() {
   document.getElementById('login-error').style.display = 'none';
 }
 
+// ── TEMA (dark / light) ──────────────────────────────────────────────────────
+function applyTheme(light) {
+  const btn = document.getElementById('theme-btn');
+  if (light) {
+    document.documentElement.classList.add('light');
+    if (btn) btn.innerHTML = '☀️ Modo claro';
+  } else {
+    document.documentElement.classList.remove('light');
+    if (btn) btn.innerHTML = '🌙 Modo escuro';
+  }
+}
+
+function toggleTheme() {
+  const isLight = document.documentElement.classList.contains('light');
+  const next = !isLight;
+  localStorage.setItem('ragbot_theme', next ? 'light' : 'dark');
+  applyTheme(next);
+}
+
+// Aplica tema salvo imediatamente ao carregar (antes do login)
+applyTheme(localStorage.getItem('ragbot_theme') === 'light');
+
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('login-password').addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
@@ -736,6 +823,7 @@ function initApp() {
   loadNamespaces();     // #33 — carrega namespaces disponíveis
   loadDocuments();
   initUpload();
+  loadTokenUsage();     // C — mostra uso de tokens na topbar
   showView('chat');
 }
 
@@ -756,13 +844,14 @@ function showView(view) {
   // Marca "history" como active quando exibindo uma sessão
   if (view === 'session') document.getElementById('nav-history')?.classList.add('active');
 
-  if (view === 'docs') renderDocsPanel();
-  if (view === 'users') loadUsers();
-  if (view === 'dashboard') loadDashboard();
-  if (view === 'history') loadHistory();
-  if (view === 'audit') loadAudit();
+  if (view === 'chat')       loadDocuments();
+  if (view === 'docs')       loadDocuments();
+  if (view === 'users')      loadUsers();
+  if (view === 'dashboard')  loadDashboard();
+  if (view === 'history')    loadHistory();
+  if (view === 'audit')      loadAudit();
   if (view === 'namespaces') loadNamespacesView();
-  if (view === 'config-ia') loadRagConfig();
+  if (view === 'config-ia')  loadRagConfig();
 }
 
 // ══ UPLOAD ══════════════════════════════════════════════════════════════════
@@ -856,6 +945,7 @@ async function loadDocuments() {
     const res = await fetch(url, {headers: {'Authorization':'Bearer ' + token}});
     docsCache = await res.json();
     renderDocsSidebar(docsCache);
+    renderDocsPanel();
   } catch(err) { console.error(err); }
 }
 
@@ -873,12 +963,16 @@ function renderDocsSidebar(docs) {
       : doc.processingStatus === 'FAILED'
       ? `<span class="version-badge" style="background:rgba(255,107,107,.15);color:var(--red)">✕</span>`
       : '';
+    const retryBtn = doc.processingStatus === 'FAILED'
+      ? `<button class="doc-delete" title="Tentar novamente" style="color:var(--yellow);background:rgba(246,201,14,.12);border:none;border-radius:6px;cursor:pointer;padding:4px 8px;font-size:14px" onclick="retryDoc('${doc.id}','${escHtml(doc.fileName)}')">↺</button>`
+      : '';
     return `<div class="doc-item">
       <div class="doc-icon ${isPdf?'pdf':'csv'}">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
         <div class="doc-name" title="${doc.fileName}">${escHtml(doc.fileName)}${vBadge}${statusBadge}</div>
         <div class="doc-meta">${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
+      ${retryBtn}
       ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">✕</button>` : ''}
     </div>`;
   }).join('');
@@ -891,17 +985,26 @@ function renderDocsPanel() {
     const isPdf = doc.mimeType === 'application/pdf';
     const canDelete = currentUser.role === 'ADMIN';
     const vBadge = `<span class="version-badge${doc.version > 1 ? '' : ' v1'}">v${doc.version}</span>`;
+    const statusBadgePanel = doc.processingStatus === 'PROCESSING'
+      ? `<span class="version-badge" style="background:rgba(246,201,14,.15);color:var(--yellow);animation:pulse 1.5s infinite">⏳ Processando</span>`
+      : doc.processingStatus === 'FAILED'
+      ? `<span class="version-badge" style="background:rgba(255,107,107,.15);color:var(--red)">✕ Falhou</span>`
+      : '';
     const histBtn = doc.hasHistory
       ? `<button class="action-btn" onclick="viewVersionHistory('${doc.id}','${escHtml(doc.fileName)}')" title="Ver histórico de versões">📜 Versões</button>`
+      : '';
+    const retryBtnPanel = doc.processingStatus === 'FAILED'
+      ? `<button class="action-btn" style="color:var(--yellow);border-color:var(--yellow)" onclick="retryDoc('${doc.id}','${escHtml(doc.fileName)}')">↺ Retentar</button>`
       : '';
     return `<div class="doc-item" style="background:var(--surface2);margin-bottom:6px;border-radius:8px;padding:12px">
       <div class="doc-icon ${isPdf?'pdf':'csv'}" style="width:34px;height:34px;font-size:15px">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
-        <div class="doc-name" style="font-size:13px">${escHtml(doc.fileName)}${vBadge}</div>
+        <div class="doc-name" style="font-size:13px">${escHtml(doc.fileName)}${vBadge}${statusBadgePanel}</div>
         <div class="doc-meta">${doc.mimeType} · ${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
       <div style="display:flex;gap:6px">
         ${histBtn}
+        ${retryBtnPanel}
         ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">🗑 Remover</button>` : ''}
       </div>
     </div>`;
@@ -914,6 +1017,24 @@ async function deleteDoc(id, name) {
     await fetch(API + '/api/documents/' + id, {method:'DELETE', headers:{'Authorization':'Bearer ' + token}});
     showToast('Documento removido.', 'success'); loadDocuments();
   } catch(err) { showToast('Erro ao remover.', 'error'); }
+}
+
+async function retryDoc(id, name) {
+  try {
+    const res = await fetch(API + '/api/documents/' + id + '/retry', {
+      method: 'POST',
+      headers: {'Authorization': 'Bearer ' + token}
+    });
+    if (res.status === 202) {
+      showToast('⏳ Reprocessando "' + name + '"…', 'success');
+      loadDocuments();
+      pollProcessingStatus(id, name);
+    } else if (res.status === 409) {
+      showToast('Documento não está em estado FAILED.', 'error');
+    } else {
+      showToast('Erro ao retentar processamento.', 'error');
+    }
+  } catch(err) { showToast('Erro de conexão.', 'error'); }
 }
 
 // ══ CHAT (#13 sessionId) ════════════════════════════════════════════════════
@@ -939,10 +1060,20 @@ function updateSessionChip() {
 async function sendMessage() {
   const question = textarea.value.trim();
   if (!question) return;
+
+  // ── Item 3.1: remove empty state ──
   document.getElementById('welcome')?.remove();
   appendMsg('user', question, null);
+
+  // ── Item 4.2: salva texto antes de limpar (para restaurar em caso de erro) ──
+  const savedQuestion = question;
   textarea.value = ''; textarea.style.height = 'auto';
-  document.getElementById('send-btn').disabled = true;
+
+  // ── Item 3.2: desabilita input imediatamente ──
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn.disabled = true;
+  textarea.disabled = true;
+
   const tid = appendTyping();
   try {
     const res = await fetch(API + '/api/chat', {
@@ -952,56 +1083,137 @@ async function sendMessage() {
     });
     const data = await res.json();
     removeTyping(tid);
-    const answer = data.answer || 'Sem resposta.';
-    const interactionId = data.interactionId;
-    // Persiste sessionId da resposta
-    if (data.sessionId) {
-      currentSessionId = data.sessionId;
-      sessionStorage.setItem('ragbot_session_' + currentUser.username, currentSessionId);
-      updateSessionChip();
+
+    if (res.status === 429) {
+      // ── Item 4.2: distingue limite de tokens do usuário vs rate limit da IA ──
+      const isTokenLimit = data.error === 'TOKEN_LIMIT_EXCEEDED';
+      const msg = isTokenLimit
+        ? 'Você atingiu o limite de consultas do seu plano. Fale com o administrador.'
+        : (data.message || 'Limite de requisições da IA atingido. Aguarde alguns segundos e tente novamente.');
+      appendSystemMsg(isTokenLimit ? '🚫' : '⏳', msg);
+      // Restaura o texto que o usuário havia digitado
+      textarea.value = savedQuestion;
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
+    } else if (!res.ok) {
+      const msg = data.message || 'Ocorreu um erro. Tente novamente.';
+      appendSystemMsg('⚠️', msg);
+      textarea.value = savedQuestion;
+    } else {
+      const answer = data.answer || 'Sem resposta.';
+      if (data.sessionId) {
+        currentSessionId = data.sessionId;
+        sessionStorage.setItem('ragbot_session_' + currentUser.username, currentSessionId);
+        updateSessionChip();
+      }
+      // ── Item 3.3: passa sources para renderização como chips ──
+      appendMsg('bot', answer, data.interactionId, data.sources || []);
+      loadTokenUsage();
     }
-    appendMsg('bot', answer, interactionId);
   } catch(err) {
     removeTyping(tid);
-    appendMsg('bot', '⚠️ Erro de conexão.', null);
+    appendSystemMsg('⚠️', 'Erro de conexão. Verifique sua rede e tente novamente.');
+    textarea.value = savedQuestion;
   } finally {
-    document.getElementById('send-btn').disabled = false;
+    // ── Item 3.2: reabilita input assim que resposta chegar ──
+    sendBtn.disabled = false;
+    textarea.disabled = false;
+    textarea.focus();
   }
 }
 
-function appendMsg(role, content, interactionId) {
+// ── Item 3.3: sources = array de nomes de arquivo ──
+function appendMsg(role, content, interactionId, sources) {
   const msgs = document.getElementById('messages');
   const isUser = role === 'user';
   const div = document.createElement('div');
   div.className = 'msg ' + role;
+
+  // ── Item 4.1: Markdown para mensagens da IA ──
+  const bubbleContent = isUser
+    ? escHtml(content).replace(/\n/g, '<br/>')
+    : parseMarkdown(content);
+
+  // ── Item 3.3: source chips no rodapé da bolha ──
+  const chipsHtml = (!isUser && sources && sources.length)
+    ? `<div class="source-chips">${sources.map(s =>
+        `<span class="source-chip" title="${escHtml(s)}">📎 ${escHtml(s)}</span>`
+      ).join('')}</div>`
+    : '';
+
   div.innerHTML = `
-    <div class="msg-avatar">${isUser ? '👤' : '🤖'}</div>
+    <div class="msg-avatar">${isUser ? '👤' : '✦'}</div>
     <div class="msg-body">
-      <div class="msg-label">${isUser ? currentUser?.username || 'Você' : 'RAGBot'}</div>
-      <div class="msg-bubble">${escHtml(content).replace(/\n/g,'<br/>')}</div>
-      ${!isUser && interactionId ? `
+      <div class="msg-label">${isUser ? (currentUser?.username || 'Você') : 'Abner'}</div>
+      <div class="msg-bubble">${bubbleContent}</div>
+      ${chipsHtml}
+      ${!isUser ? `
       <div class="feedback-row">
+        <button class="fb-btn" title="Copiar resposta" onclick="copyMsg(this, this.closest('.msg-body').querySelector('.msg-bubble').innerText)">📋</button>
+        ${interactionId ? `
         <button class="fb-btn" onclick="sendFeedback('${interactionId}',true,this)">👍</button>
-        <button class="fb-btn neg" onclick="sendFeedback('${interactionId}',false,this)">👎</button>
+        <button class="fb-btn neg" onclick="sendFeedback('${interactionId}',false,this)">👎</button>` : ''}
       </div>` : ''}
     </div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+// ── Item 4.2: mensagem de sistema (erros, avisos) ──
+function appendSystemMsg(icon, text) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;padding:8px 16px;font-size:12px;color:var(--muted);animation:fadeIn .2s ease';
+  div.innerHTML = `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 14px;display:inline-block">${icon} ${escHtml(text)}</span>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Item 3.2: typing com hint "Abner está analisando..." ──
 function appendTyping() {
   const id = 'typing-' + Date.now();
   const msgs = document.getElementById('messages');
   const div = document.createElement('div');
   div.className = 'msg bot'; div.id = id;
-  div.innerHTML = `<div class="msg-avatar">🤖</div>
-    <div class="msg-body"><div class="msg-label">RAGBot</div>
-    <div class="msg-bubble"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
+  div.innerHTML = `
+    <div class="msg-avatar">✦</div>
+    <div class="msg-body">
+      <div class="msg-label">Abner</div>
+      <div class="msg-bubble">
+        <div class="typing-indicator"><span></span><span></span><span></span></div>
+      </div>
+      <div class="typing-hint">Abner está analisando os documentos…</div>
+    </div>`;
   msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
   return id;
 }
 
 function removeTyping(id) { document.getElementById(id)?.remove(); }
+
+async function copyMsg(btn, text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = '✅';
+    setTimeout(() => { btn.textContent = '📋'; }, 1500);
+  } catch { showToast('Não foi possível copiar.', 'error'); }
+}
+
+async function loadTokenUsage() {
+  const chip = document.getElementById('token-usage-chip');
+  if (!chip || !token) return;
+  try {
+    const res = await fetch(API + '/api/users/me/usage', {headers: {'Authorization':'Bearer ' + token}});
+    if (!res.ok) return;
+    const d = await res.json();
+    const pct = d.percentUsed ?? 0;
+    const color = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--yellow)' : 'var(--muted)';
+    chip.style.display = 'inline-block';
+    chip.style.color = color;
+    chip.style.borderColor = pct >= 70 ? color : 'var(--border)';
+    chip.textContent = `🪙 ${d.tokensUsed.toLocaleString()} / ${d.monthlyLimit.toLocaleString()} tokens`;
+    chip.title = `Uso este mês: ${pct}%`;
+  } catch { /* silencioso — não é crítico */ }
+}
 
 function clearChat() {
   // Limpa a UI e inicia nova sessão (sem sessionId → backend cria nova)
@@ -1010,19 +1222,33 @@ function clearChat() {
   updateSessionChip();
   document.getElementById('messages').innerHTML = `
     <div class="welcome" id="welcome">
-      <div class="welcome-icon">💬</div>
-      <h2>Nova sessão iniciada</h2>
-      <p>Faça perguntas sobre os documentos indexados.</p>
-      <div class="welcome-hints">
-        <button class="hint" onclick="useHint(this)">📋 Quais são os procedimentos de segurança?</button>
-        <button class="hint" onclick="useHint(this)">📊 Resuma os dados do relatório enviado.</button>
-        <button class="hint" onclick="useHint(this)">🔍 Quais itens precisam de atenção?</button>
+      <div class="abner-avatar">✦</div>
+      <h2>Bem-vindo ao Crivo.</h2>
+      <p>Eu sou o <strong>Abner</strong>, como posso ajudar?</p>
+      <div class="welcome-suggestions">
+        <button class="suggestion-btn" onclick="useHint('Resuma o conteúdo do documento mais recente.')">
+          <span class="suggestion-icon">📋</span>Resumir o documento mais recente
+        </button>
+        <button class="suggestion-btn" onclick="useHint('Quais são as regras de chargeback?')">
+          <span class="suggestion-icon">💳</span>Quais as regras de chargeback?
+        </button>
+        <button class="suggestion-btn" onclick="useHint('Quais itens precisam de atenção imediata?')">
+          <span class="suggestion-icon">🔍</span>Quais itens precisam de atenção?
+        </button>
       </div>
     </div>`;
 }
 
-function useHint(el) {
-  textarea.value = el.textContent.trim().replace(/^[^\s]+\s/,'');
+// ── Item 3.1: aceita string direta ou elemento HTML (compat.) ──
+function useHint(arg) {
+  if (typeof arg === 'string') {
+    textarea.value = arg;
+  } else {
+    // legado: arg é um elemento <button>
+    textarea.value = arg.textContent.trim().replace(/^[^\s]+\s/, '');
+  }
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
   sendMessage();
 }
 
@@ -1057,16 +1283,41 @@ async function loadHistory() {
     panel.innerHTML = `<div class="session-list">${sessions.map(s => {
       const isActive = s.id === currentSessionId;
       return `
-      <div class="session-card" onclick="openSession('${s.id}')" style="${isActive ? 'border-color:var(--accent)' : ''}">
-        <div class="session-card-header">
+      <div class="session-card" style="${isActive ? 'border-color:var(--accent)' : ''}">
+        <div class="session-card-header" onclick="openSession('${s.id}')" style="cursor:pointer;flex:1">
           <span class="session-id">${s.id.slice(0,8)}… ${isActive ? '<span style="color:var(--green);font-size:9px">● ativa</span>' : ''}</span>
           <span class="session-date">${fmtDateTime(s.lastMessageAt)}</span>
         </div>
-        <div class="session-preview">Iniciada em ${fmtDateTime(s.createdAt)} · clique para ver</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="session-preview" onclick="openSession('${s.id}')" style="cursor:pointer;flex:1">Iniciada em ${fmtDateTime(s.createdAt)} · clique para ver</div>
+          <button class="doc-delete" title="Apagar sessão" onclick="deleteSession('${s.id}','${isActive}')" style="flex-shrink:0">🗑</button>
+        </div>
       </div>`;
     }).join('')}
     </div>`;
   } catch(err) { panel.innerHTML = '<div class="empty-state"><div class="ei">⚠️</div><p>Erro ao carregar histórico.</p></div>'; }
+}
+
+async function deleteSession(sessionId, isActive) {
+  if (!confirm('Apagar esta conversa permanentemente?')) return;
+  try {
+    const res = await fetch(API + '/api/chat/sessions/' + sessionId, {
+      method: 'DELETE',
+      headers: {'Authorization': 'Bearer ' + token}
+    });
+    if (res.ok) {
+      showToast('Conversa apagada.', 'success');
+      // Se era a sessão ativa, limpa o estado
+      if (isActive === 'true' || sessionId === currentSessionId) {
+        currentSessionId = null;
+        sessionStorage.removeItem('ragbot_session_' + currentUser.username);
+        updateSessionChip();
+      }
+      loadHistory();
+    } else {
+      showToast('Erro ao apagar conversa.', 'error');
+    }
+  } catch(err) { showToast('Erro de conexão.', 'error'); }
 }
 
 async function openSession(sessionId) {
@@ -1473,6 +1724,8 @@ async function loadRagConfig() {
     document.getElementById('cfg-semWeight').value       = c.semanticWeight;
     document.getElementById('lbl-semWeight').textContent = c.semanticWeight.toFixed(2);
     document.getElementById('cfg-tokenLimit').value = c.monthlyTokenLimit;
+    document.getElementById('cfg-maxHistory').value      = c.maxHistoryMessages;
+    document.getElementById('lbl-maxHistory').textContent = c.maxHistoryMessages;
     toggleSemanticWeightVisibility();
   } catch(err) { showToast('Erro de conexão.', 'error'); }
 }
@@ -1495,7 +1748,8 @@ async function saveRagConfig() {
     shortChunkLength: parseInt(document.getElementById('cfg-shortChunk').value),
     hybridEnabled:    document.getElementById('cfg-hybrid').checked,
     semanticWeight:   parseFloat(document.getElementById('cfg-semWeight').value),
-    monthlyTokenLimit:parseInt(document.getElementById('cfg-tokenLimit').value)
+    monthlyTokenLimit:  parseInt(document.getElementById('cfg-tokenLimit').value),
+    maxHistoryMessages: parseInt(document.getElementById('cfg-maxHistory').value)
   };
   try {
     const res = await fetch(API + '/api/admin/config', {
@@ -1507,6 +1761,111 @@ async function saveRagConfig() {
     showToast('✓ Configuração salva com efeito imediato!', 'success');
   } catch(err) { showToast('Erro de conexão.', 'error'); }
   finally { btn.disabled = false; btn.textContent = '💾 Salvar configuração'; }
+}
+
+// ══ MARKDOWN (item 4.1) ══════════════════════════════════════════════════════
+/**
+ * Parser Markdown puro (sem dependências externas).
+ * Suporta: h1/h2/h3, negrito, itálico, código inline, blocos de código,
+ *          listas (ul/ol), tabelas GFM, réguas horizontais, parágrafos.
+ */
+function parseMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // ── Bloco de código ```...``` ──────────────────────────────────────────
+    if (line.startsWith('```')) {
+      let code = '';
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        code += escHtml(lines[i]) + '\n';
+        i++;
+      }
+      html += `<pre class="md-pre">${code}</pre>`;
+      i++; // pula o ``` de fechamento
+      continue;
+    }
+
+    // ── Cabeçalhos ─────────────────────────────────────────────────────────
+    if (/^### /.test(line)) { html += `<h3>${inlineMd(line.slice(4))}</h3>`; i++; continue; }
+    if (/^## /.test(line))  { html += `<h2>${inlineMd(line.slice(3))}</h2>`; i++; continue; }
+    if (/^# /.test(line))   { html += `<h1>${inlineMd(line.slice(2))}</h1>`; i++; continue; }
+
+    // ── Linha horizontal ---  ou *** ───────────────────────────────────────
+    if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
+      html += '<hr class="md-hr"/>'; i++; continue;
+    }
+
+    // ── Tabela GFM (linha com | seguida de separador |---|---| ) ───────────
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+    if (line.includes('|') && /^[|\s:−\-]+$/.test(nextLine) && nextLine.includes('-')) {
+      const headers = splitTableRow(line);
+      i += 2; // pula cabeçalho e separador
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|')) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      html += `<div class="md-table-wrap"><table class="md-table">
+        <thead><tr>${headers.map(h => `<th>${inlineMd(h)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${inlineMd(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>`;
+      continue;
+    }
+
+    // ── Lista não-ordenada  - / * / + ──────────────────────────────────────
+    if (/^[-*+] /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*+] /.test(lines[i])) {
+        items.push(inlineMd(lines[i].replace(/^[-*+] /, '')));
+        i++;
+      }
+      html += `<ul>${items.map(it => `<li>${it}</li>`).join('')}</ul>`;
+      continue;
+    }
+
+    // ── Lista ordenada  1. ─────────────────────────────────────────────────
+    if (/^\d+\. /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+\. /.test(lines[i])) {
+        items.push(inlineMd(lines[i].replace(/^\d+\. /, '')));
+        i++;
+      }
+      html += `<ol>${items.map(it => `<li>${it}</li>`).join('')}</ol>`;
+      continue;
+    }
+
+    // ── Linha vazia → apenas avança ────────────────────────────────────────
+    if (line.trim() === '') { i++; continue; }
+
+    // ── Parágrafo padrão ───────────────────────────────────────────────────
+    html += `<p>${inlineMd(line)}</p>`;
+    i++;
+  }
+  return html;
+}
+
+function splitTableRow(line) {
+  return line.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+}
+
+/** Formata inline: código, negrito, itálico (após escape HTML). */
+function inlineMd(text) {
+  let s = escHtml(text);
+  // Código inline — processa primeiro para evitar falsos positivos em bold/italic
+  s = s.replace(/`([^`]+)`/g, (_, c) => `<code class="md-code">${c}</code>`);
+  // Negrito (**) e (__)
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_\n]+)__/g,     '<strong>$1</strong>');
+  // Itálico (*) e (_)
+  s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  s = s.replace(/_([^_\n]+)_/g,   '<em>$1</em>');
+  return s;
 }
 
 // ══ UTILS ════════════════════════════════════════════════════════════════════

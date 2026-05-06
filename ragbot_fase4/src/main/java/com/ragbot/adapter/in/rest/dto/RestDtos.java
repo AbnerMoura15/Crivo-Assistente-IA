@@ -16,7 +16,7 @@ public class RestDtos {
             String namespaceId       // #33: null → usa namespace padrão
     ) {}
 
-    public record ChatResponse(String answer, String interactionId, String sessionId) {}
+    public record ChatResponse(String answer, String interactionId, String sessionId, List<String> sources) {}
 
     public record MessageDto(String role, String content) {}
 

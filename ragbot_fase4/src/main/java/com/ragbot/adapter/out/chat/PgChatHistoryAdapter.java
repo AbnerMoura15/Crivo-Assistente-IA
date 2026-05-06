@@ -74,6 +74,12 @@ public class PgChatHistoryAdapter implements ChatHistoryPort {
                 this::mapMessage, sessionId);
     }
 
+    @Override
+    public void deleteSession(String sessionId) {
+        jdbc.update("DELETE FROM chat_messages WHERE session_id = ?", sessionId);
+        jdbc.update("DELETE FROM chat_sessions WHERE id = ?", sessionId);
+    }
+
     private ChatSession mapSession(ResultSet rs, int rowNum) throws SQLException {
         return new ChatSession(
                 rs.getString("id"),

@@ -73,23 +73,20 @@ class GroqLlmAdapterResilienceTest {
     }
 
     @Test
-    @DisplayName("deve fazer retry em erro 429 (rate limit) e ter sucesso")
-    void shouldRetryOn429AndSucceed() {
-        // Primeiro 429, depois 200
+    @DisplayName("429 NÃO deve ser retentado — falha imediata com RateLimitException")
+    void shouldNotRetryOn429_failsImmediately() {
+        // Só 1 resposta enfileirada — se houver retry, o servidor ficaria sem resposta
         server.enqueue(new MockResponse()
                 .setResponseCode(429)
-                .setBody("{\"error\":{\"message\":\"rate limit\"}}")
+                .setBody("{\"error\":{\"message\":\"rate limit exceeded\"}}")
                 .addHeader("Content-Type", "application/json"));
 
-        server.enqueue(new MockResponse()
-                .setResponseCode(200)
-                .setBody(SUCCESS_BODY)
-                .addHeader("Content-Type", "application/json"));
+        assertThatThrownBy(() -> adapter.complete("Você é um assistente", HISTORY))
+                .isInstanceOf(GroqLlmAdapter.RateLimitException.class)
+                .hasMessageContaining("rate limit");
 
-        String result = adapter.complete("Você é um assistente", HISTORY);
-
-        assertThat(result).isEqualTo("Resposta correta");
-        assertThat(server.getRequestCount()).isEqualTo(2); // confirmou o retry
+        // Exatamente 1 tentativa — sem retry!
+        assertThat(server.getRequestCount()).isEqualTo(1);
     }
 
     @Test
@@ -107,17 +104,19 @@ class GroqLlmAdapterResilienceTest {
     }
 
     @Test
-    @DisplayName("deve lançar exceção após esgotar todos os retries")
+    @DisplayName("deve lançar exceção após esgotar todos os retries em 503")
     void shouldThrowAfterExhaustingRetries() {
-        // 3 retries configurados — enfileira 4 falhas
-        server.enqueue(new MockResponse().setResponseCode(429));
-        server.enqueue(new MockResponse().setResponseCode(429));
-        server.enqueue(new MockResponse().setResponseCode(429));
-        server.enqueue(new MockResponse().setResponseCode(429));
+        // 3 retries configurados para 5xx — enfileira 4 falhas 503
+        server.enqueue(new MockResponse().setResponseCode(503));
+        server.enqueue(new MockResponse().setResponseCode(503));
+        server.enqueue(new MockResponse().setResponseCode(503));
+        server.enqueue(new MockResponse().setResponseCode(503));
 
         assertThatThrownBy(() -> adapter.complete("Você é um assistente", HISTORY))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("429");
+                .isInstanceOf(RuntimeException.class);
+
+        // 1 original + 3 retries = 4 tentativas
+        assertThat(server.getRequestCount()).isEqualTo(4);
     }
 
     @Test

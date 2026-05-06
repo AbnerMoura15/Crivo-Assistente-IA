@@ -19,10 +19,14 @@ public class ListDocumentsService implements ListDocumentsUseCase {
 
     private final DocumentStoragePort storagePort;
     private final VectorStorePort vectorStorePort;
+    private final AsyncIngestWorker asyncIngestWorker;
 
-    public ListDocumentsService(DocumentStoragePort storagePort, VectorStorePort vectorStorePort) {
-        this.storagePort = storagePort;
-        this.vectorStorePort = vectorStorePort;
+    public ListDocumentsService(DocumentStoragePort storagePort,
+                                VectorStorePort vectorStorePort,
+                                AsyncIngestWorker asyncIngestWorker) {
+        this.storagePort        = storagePort;
+        this.vectorStorePort    = vectorStorePort;
+        this.asyncIngestWorker  = asyncIngestWorker;
     }
 
     @Override
@@ -61,5 +65,24 @@ public class ListDocumentsService implements ListDocumentsUseCase {
         storagePort.delete(documentId);
 
         log.info("Documento removido (soft delete): {}", documentId);
+    }
+
+    @Override
+    public boolean retryProcessing(String documentId) {
+        Optional<Document> docOpt = storagePort.findById(documentId);
+        if (docOpt.isEmpty()) return false;
+
+        Document doc = docOpt.get();
+        if (!"FAILED".equals(doc.processingStatus())) {
+            log.warn("Retry ignorado — documento {} está em status '{}' (esperado FAILED)",
+                    documentId, doc.processingStatus());
+            return false;
+        }
+
+        storagePort.updateProcessingStatus(documentId, "PROCESSING");
+        asyncIngestWorker.processAsync(documentId, doc.fileName(), doc.mimeType(),
+                doc.namespaceId(), doc.version());
+        log.info("Reprocessamento iniciado para documento FAILED: {} ({})", documentId, doc.fileName());
+        return true;
     }
 }

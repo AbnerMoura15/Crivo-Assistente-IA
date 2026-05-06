@@ -8,15 +8,16 @@ package com.ragbot.domain.entity;
  * com cache de 30 segundos pelo RagConfigService.
  */
 public record RagConfig(
-        int    topK,              // chunks retornados após re-ranking
-        double minScore,          // score mínimo para aceitar um chunk
-        int    shortChunkLength,  // chunks menores que isso recebem penalidade de 15%
-        boolean hybridEnabled,    // liga busca híbrida vetorial + BM25
-        double semanticWeight,    // peso vetorial na busca híbrida (0-1)
-        long   monthlyTokenLimit  // limite de tokens estimados por usuário/mês
+        int    topK,               // chunks retornados após re-ranking
+        double minScore,           // score mínimo para aceitar um chunk
+        int    shortChunkLength,   // chunks menores que isso recebem penalidade de 15%
+        boolean hybridEnabled,     // liga busca híbrida vetorial + BM25
+        double semanticWeight,     // peso vetorial na busca híbrida (0-1)
+        long   monthlyTokenLimit,  // limite de tokens estimados por usuário/mês
+        int    maxHistoryMessages  // máximo de mensagens do histórico enviadas ao LLM
 ) {
     /** Valores padrão — usados quando o banco ainda não tem a tabela (testes sem DB). */
     public static RagConfig defaults() {
-        return new RagConfig(3, 0.10, 80, true, 0.85, 100_000L);
+        return new RagConfig(3, 0.10, 80, true, 0.85, 100_000L, 6);
     }
 }
