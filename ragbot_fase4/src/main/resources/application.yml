@@ -6,6 +6,14 @@ spring:
     url: jdbc:postgresql://localhost:5544/ragbot
     username: postgres
     password: postgres
+    hikari:
+      maximum-pool-size: 3          # Supabase pgbouncer limita conexões; 3 é suficiente
+      minimum-idle: 1
+      connection-timeout: 20000     # 20s para obter conexão antes de falhar
+      idle-timeout: 600000          # 10min idle antes de fechar
+      max-lifetime: 1800000         # 30min max lifetime da conexão
+      keepalive-time: 300000        # 5min keepalive para não fechar conexão ociosa
+      connection-test-query: SELECT 1
   servlet:
     multipart:
       max-file-size: 20MB
