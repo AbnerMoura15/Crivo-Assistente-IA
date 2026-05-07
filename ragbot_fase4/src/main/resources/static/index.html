@@ -18,11 +18,11 @@
     --text:#1a1e2e;--muted:#6b7a99;--user-bg:#e8edfb;--bot-bg:#f5f7fc;
   }
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;overflow:hidden}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100dvh;display:flex;overflow:hidden}
 
   /* ── LOGIN ── */
   #login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000}
-  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:360px}
+  .login-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:clamp(24px,5vw,40px);width:min(360px,92vw)}
   .login-logo{text-align:center;margin-bottom:28px}
   .login-logo .icon{width:56px;height:56px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 10px}
   .login-logo h1{font-size:22px;font-weight:600}
@@ -37,7 +37,7 @@
   .login-error{background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);color:var(--red);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px;display:none}
 
   /* ── APP LAYOUT ── */
-  #app{display:none;width:100%;height:100vh;flex-direction:row}
+  #app{display:none;width:100%;height:100dvh;flex-direction:row}
   .sidebar{width:260px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
   .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
 
@@ -212,7 +212,7 @@
 
   /* ── MODAL ── */
   .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:900;backdrop-filter:blur(2px)}
-  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:380px;animation:fadeIn .2s ease}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;width:min(380px,92vw);animation:fadeIn .2s ease}
   .modal h3{font-size:16px;font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:8px}
   .modal .form-group{margin-bottom:14px}
   .modal .form-group label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:500}
@@ -306,6 +306,60 @@
   .suggestion-btn{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12px;cursor:pointer;text-align:left;transition:all .15s;color:var(--text);display:flex;align-items:center;gap:10px}
   .suggestion-btn:hover{border-color:var(--accent);background:rgba(79,124,255,.07);transform:translateY(-1px)}
   .suggestion-icon{font-size:14px;flex-shrink:0}
+
+  /* ── HAMBURGER ── */
+  .hamburger{
+    display:none;flex-direction:column;justify-content:center;gap:5px;
+    position:fixed;top:12px;left:12px;z-index:600;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:8px;padding:8px;cursor:pointer;
+    width:36px;height:36px;transition:border-color .15s;
+  }
+  .hamburger:hover{border-color:var(--accent)}
+  .hamburger span{display:block;width:16px;height:2px;background:var(--text);border-radius:2px;transition:transform .2s,opacity .2s}
+  .hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+  .hamburger.open span:nth-child(2){opacity:0}
+  .hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+
+  /* ── SIDEBAR BACKDROP ── */
+  .sidebar-backdrop{
+    display:none;position:fixed;inset:0;
+    background:rgba(0,0,0,.45);z-index:499;
+    backdrop-filter:blur(1px);
+  }
+  .sidebar-backdrop.visible{display:block}
+
+  /* ── TABLET (≤ 768 px) ── */
+  @media (max-width:768px) {
+    .hamburger{display:flex}
+    .sidebar{
+      position:fixed;left:-270px;top:0;bottom:0;z-index:500;
+      transition:left .25s ease;box-shadow:4px 0 24px rgba(0,0,0,.35);
+      height:100dvh;
+    }
+    .sidebar.open{left:0}
+    .main{width:100%}
+    .topbar{padding:12px 14px 12px 56px}  /* espaço para o hamburger fixo */
+    .msg-body{max-width:88%}
+    .metrics-grid{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+    .modal{padding:24px}
+  }
+
+  /* ── CELULAR (≤ 480 px) ── */
+  @media (max-width:480px) {
+    .login-card{padding:24px 18px}
+    .messages{padding:12px}
+    .input-area{padding:8px 12px}
+    .panel{padding:14px}
+    .topbar{padding:10px 12px 10px 54px}
+    .topbar-title{font-size:13px}
+    .metrics-grid{grid-template-columns:1fr 1fr}
+    .filter-bar{flex-direction:column}
+    .filter-bar input,.filter-bar select{width:100%}
+    .data-table{font-size:11px}
+    .data-table th,.data-table td{padding:8px 8px}
+    .input-hint{display:none}
+  }
 </style>
 </head>
 <body>
@@ -334,8 +388,16 @@
 <!-- ══ APP ════════════════════════════════════════════════════════ -->
 <div id="app">
 
+  <!-- HAMBURGER (mobile) -->
+  <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+
+  <!-- SIDEBAR BACKDROP (mobile tap-to-close) -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
   <!-- SIDEBAR -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="logo">
         <div class="logo-icon">✦</div>
@@ -767,6 +829,22 @@ function doLogout() {
   document.getElementById('login-error').style.display = 'none';
 }
 
+// ── SIDEBAR MOBILE ───────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const btn = document.getElementById('hamburger-btn');
+  const isOpen = sidebar.classList.toggle('open');
+  backdrop.classList.toggle('visible', isOpen);
+  btn.classList.toggle('open', isOpen);
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('visible');
+  document.getElementById('hamburger-btn').classList.remove('open');
+}
+
 // ── TEMA (dark / light) ──────────────────────────────────────────────────────
 function applyTheme(light) {
   const btn = document.getElementById('theme-btn');
@@ -843,6 +921,9 @@ function showView(view) {
   if (nav) nav.classList.add('active');
   // Marca "history" como active quando exibindo uma sessão
   if (view === 'session') document.getElementById('nav-history')?.classList.add('active');
+
+  // Fecha sidebar automaticamente ao navegar no mobile
+  if (window.innerWidth <= 768) closeSidebar();
 
   if (view === 'chat')       loadDocuments();
   if (view === 'docs')       loadDocuments();
