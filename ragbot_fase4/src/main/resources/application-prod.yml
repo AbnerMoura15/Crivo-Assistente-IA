@@ -1,0 +1,73 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  devtools:
+    restart:
+      enabled: false
+    livereload:
+      enabled: false
+
+  datasource:
+    # ── Railway PostgreSQL interno ────────────────────────────────────────────
+    # Railway injeta PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE automaticamente.
+    # Para Supabase: defina SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME
+    # e SPRING_DATASOURCE_PASSWORD como variáveis de ambiente no Railway.
+    #
+    # Exemplo Supabase (Transaction Pooler — porta 6543):
+    #   SPRING_DATASOURCE_URL=jdbc:postgresql://aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require
+    #   SPRING_DATASOURCE_USERNAME=postgres.<project-ref>
+    #   SPRING_DATASOURCE_PASSWORD=<sua-senha>
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:ragbot}?sslmode=disable}
+    username: ${SPRING_DATASOURCE_USERNAME:${PGUSER:postgres}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${PGPASSWORD:postgres}}
+    hikari:
+      maximum-pool-size: 2        # 2 conexões — economiza memória e slots no DB
+      minimum-idle: 1
+      idle-timeout: 60000         # libera conexão ociosa em 60s
+      connection-timeout: 20000
+      keepalive-time: 30000       # mantém conexão viva (importante em Supabase)
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  servlet:
+    multipart:
+      max-file-size: 10MB         # reduzido de 20MB para economizar RAM no parse
+      max-request-size: 10MB
+
+ragbot:
+  storage:
+    dir: /data/documents          # volume persistente criado no Dockerfile
+  async:
+    core-pool-size: ${ASYNC_CORE_POOL:1}   # 1 thread sempre ativa (vs 2 no dev)
+    max-pool-size: ${ASYNC_MAX_POOL:2}     # máx 2 simultâneas para não pressionar GC
+    queue-capacity: ${ASYNC_QUEUE:10}      # fila menor para evitar acúmulo em memória
+
+# ── Logging — apenas o essencial em produção ─────────────────────────────────
+logging:
+  level:
+    root: WARN
+    com.ragbot: INFO              # logs de negócio mantidos em INFO
+    org.flywaydb: INFO            # log de migração do banco
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    com.zaxxer.hikari: WARN
+  pattern:
+    console: "%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
+
+# ── Actuator — apenas health em produção ────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info      # metrics removido — economiza memória de coleta
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: never         # não expõe detalhes internos publicamente
+      show-components: never
+  health:
+    diskspace:
+      enabled: false              # Railway não tem disco fixo para monitorar
