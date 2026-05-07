@@ -26,20 +26,25 @@ public class GoogleEmbeddingAdapter implements EmbeddingPort {
             @Value("${google.embedding-endpoint:https://generativelanguage.googleapis.com/v1beta}") String endpoint,
             @Value("${google.token:}") String token,
             @Value("${google.embedding-model:gemini-embedding-001}") String model) {
-        if (token == null || token.isBlank()) {
-            throw new IllegalStateException("GOOGLE_API_KEY nao configurada. Defina a variavel de ambiente GOOGLE_API_KEY para gerar embeddings.");
-        }
-        this.token = token;
+        this.token = (token == null) ? "" : token;
         this.model = model;
-        this.webClient = WebClient.builder()
-                .baseUrl(endpoint)
-                .defaultHeader("x-goog-api-key", token)
-                .defaultHeader("Content-Type", "application/json")
-                .build();
+        if (this.token.isBlank()) {
+            log.warn("GOOGLE_API_KEY nao configurada. Embeddings Google estarao indisponiveis.");
+            this.webClient = null;
+        } else {
+            this.webClient = WebClient.builder()
+                    .baseUrl(endpoint)
+                    .defaultHeader("x-goog-api-key", token)
+                    .defaultHeader("Content-Type", "application/json")
+                    .build();
+        }
     }
 
     @Override
     public List<Float> embed(String text) {
+        if (token.isBlank() || webClient == null) {
+            throw new IllegalStateException("GOOGLE_API_KEY nao configurada. Defina a variavel de ambiente GOOGLE_API_KEY para gerar embeddings.");
+        }
         log.debug("Gerando embedding Google para {} caracteres", text.length());
 
         EmbedResponseDto response = webClient.post()

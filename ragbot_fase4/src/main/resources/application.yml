@@ -58,7 +58,7 @@ groq:
 # ── Google (Embedding) ───────────────────────────────────────────────────────
 google:
   llm-endpoint: ${GOOGLE_LLM_ENDPOINT:https://generativelanguage.googleapis.com/v1beta}
-  token: ${GOOGLE_API_KEY}
+  token: ${GOOGLE_API_KEY:}
   model: ${GOOGLE_MODEL:gemini-2.5-flash}
   embedding-endpoint: ${GOOGLE_EMBEDDING_ENDPOINT:https://generativelanguage.googleapis.com/v1beta}
   embedding-model: ${GOOGLE_EMBEDDING_MODEL:gemini-embedding-001}
