@@ -7,12 +7,13 @@ spring:
     username: postgres
     password: postgres
     hikari:
-      maximum-pool-size: 3          # Supabase pgbouncer limita conexões; 3 é suficiente
+      maximum-pool-size: 2          # Supabase pgbouncer tem pool pequeno; manter mínimo
       minimum-idle: 1
-      connection-timeout: 20000     # 20s para obter conexão antes de falhar
+      connection-timeout: 30000     # 30s para obter conexão antes de falhar
       idle-timeout: 600000          # 10min idle antes de fechar
       max-lifetime: 1800000         # 30min max lifetime da conexão
       keepalive-time: 300000        # 5min keepalive para não fechar conexão ociosa
+      initialization-fail-timeout: -1   # Não falha no startup se DB indisponível
       connection-test-query: SELECT 1
   servlet:
     multipart:
@@ -21,6 +22,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    connect-retries: 5              # Tenta reconectar ao DB até 5 vezes antes de falhar
+    connect-retries-interval: 10    # 10s entre cada tentativa (aguarda conexões liberarem)
 
 ragbot:
   ai:
