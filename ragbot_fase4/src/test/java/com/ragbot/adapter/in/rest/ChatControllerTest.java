@@ -40,6 +40,53 @@ class ChatControllerTest {
 
     @Test
     @WithMockUser(username = "alice", roles = "VIEWER")
+    @DisplayName("POST /api/chat com pergunta acima do limite retorna 400 e NÃO chama a LLM")
+    void chatRejectsOversizedQuestion() throws Exception {
+        String longQuestion = "a".repeat(com.ragbot.adapter.in.rest.dto.RestDtos.MAX_QUESTION_LENGTH + 1);
+
+        mockMvc.perform(post("/api/chat")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of("question", longQuestion))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("VALIDATION_ERROR"));
+
+        verifyNoInteractions(queryChatUseCase);
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "VIEWER")
+    @DisplayName("POST /api/chat sem pergunta retorna 400")
+    void chatRejectsBlankQuestion() throws Exception {
+        mockMvc.perform(post("/api/chat")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(queryChatUseCase);
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "VIEWER")
+    @DisplayName("erro inesperado retorna 500 genérico, sem mensagem interna nem stack trace")
+    void unexpectedErrorDoesNotLeakDetails() throws Exception {
+        when(queryChatUseCase.queryWithSession(anyString(), any(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("ERROR: relation \"chunks\" at /app/secret/path"));
+
+        mockMvc.perform(post("/api/chat")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"question\":\"oi\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error").value("INTERNAL_ERROR"))
+                .andExpect(content().string(not(containsString("relation"))))
+                .andExpect(content().string(not(containsString("/app/secret"))))
+                .andExpect(content().string(not(containsString("IllegalStateException"))));
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "VIEWER")
     @DisplayName("POST /api/chat retorna 200 com resposta e sources")
     void chatShouldReturn200WithAnswerAndSources() throws Exception {
         when(queryChatUseCase.queryWithSession(anyString(), isNull(), eq("alice"), anyString()))

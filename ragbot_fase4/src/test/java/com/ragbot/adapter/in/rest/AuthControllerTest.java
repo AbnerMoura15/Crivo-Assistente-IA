@@ -3,7 +3,6 @@ package com.ragbot.adapter.in.rest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ragbot.application.service.AuthService;
 import com.ragbot.domain.exception.InvalidCredentialsException;
-import com.ragbot.domain.exception.UserAlreadyExistsException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,45 +84,32 @@ class AuthControllerTest {
     // ── POST /api/auth/register ───────────────────────────────────────────────
 
     @Test
-    @DisplayName("POST /api/auth/register com dados válidos retorna 201")
-    void registerWithValidDataReturns201() throws Exception {
-        doNothing().when(authService).register(any(), any(), any(), any());
-
+    @DisplayName("POST /api/auth/register não existe — ninguém se cadastra (nem como ADMIN)")
+    void publicRegisterIsNotAvailable() throws Exception {
         String body = """
-                {
-                  "username": "joao",
-                  "email": "joao@fab.com",
-                  "password": "senha123",
-                  "role": "VIEWER"
-                }
+                {"username": "invasor", "email": "x@x.com", "password": "senha123", "role": "ADMIN"}
                 """;
 
         mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isCreated());
+                .andExpect(status().is4xxClientError());
+
+        verify(authService, never()).register(any(), any(), any(), any());
     }
 
     @Test
-    @DisplayName("POST /api/auth/register com username duplicado retorna 409")
-    void registerWithDuplicateUsernameReturns409() throws Exception {
-        doThrow(new UserAlreadyExistsException("username", "joao"))
-                .when(authService).register(any(), any(), any(), any());
+    @DisplayName("POST /api/auth/login com senha acima de 72 caracteres retorna 400")
+    void loginWithOversizedPasswordReturns400() throws Exception {
+        String body = "{\"username\": \"admin\", \"password\": \"" + "a".repeat(73) + "\"}";
 
-        String body = """
-                {
-                  "username": "joao",
-                  "email": "joao@fab.com",
-                  "password": "senha123",
-                  "role": "VIEWER"
-                }
-                """;
-
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post("/api/auth/login")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isConflict());
+                .andExpect(status().isBadRequest());
+
+        verify(authService, never()).login(any(), any());
     }
 }

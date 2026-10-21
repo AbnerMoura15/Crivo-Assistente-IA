@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * TDD — testes escritos ANTES da implementação do JwtTokenProvider.
@@ -86,5 +87,15 @@ class JwtTokenProviderTest {
         String t1 = provider.generateToken("user1", "VIEWER");
         String t2 = provider.generateToken("user2", "VIEWER");
         assertThat(t1).isNotEqualTo(t2);
+    }
+
+    @Test
+    @DisplayName("deve recusar segredo ausente ou com menos de 32 bytes (fail-fast no startup)")
+    void shouldRejectWeakOrMissingSecret() {
+        assertThatThrownBy(() -> new JwtTokenProvider("curto-demais", 3600L))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("JWT_SECRET");
+        assertThatThrownBy(() -> new JwtTokenProvider(null, 3600L))
+                .isInstanceOf(IllegalStateException.class);
     }
 }

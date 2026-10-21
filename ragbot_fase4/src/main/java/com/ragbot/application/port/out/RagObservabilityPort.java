@@ -6,7 +6,8 @@ import java.util.List;
 
 public interface RagObservabilityPort {
     String save(RagInteraction interaction);
-    void updateFeedback(String interactionId, boolean positive);
+    /** Atualiza o feedback apenas se a interação pertencer ao usuário. Retorna false caso contrário. */
+    boolean updateFeedback(String interactionId, String username, boolean positive);
     List<RagInteraction> findRecent(int limit);
     long countByClassification(String classification);
     long countWithNegativeFeedback();

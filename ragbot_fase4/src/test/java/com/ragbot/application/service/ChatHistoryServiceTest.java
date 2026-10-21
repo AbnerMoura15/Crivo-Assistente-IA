@@ -81,6 +81,20 @@ class ChatHistoryServiceTest {
     }
 
     @Test
+    @DisplayName("getOrCreateSession com sessionId de OUTRO usuário cria nova sessão (não vaza histórico)")
+    void getOrCreateSession_otherUsersSession_createsNew() {
+        ChatSession bobSession = new ChatSession("sess-bob", "bob", Instant.now(), Instant.now(), List.of());
+        when(chatHistoryPort.findSession("sess-1")).thenReturn(Optional.of(SESSION)); // pertence a alice
+        when(chatHistoryPort.createSession("bob")).thenReturn(bobSession);
+
+        ChatSession result = service.getOrCreateSession("sess-1", "bob");
+
+        assertThat(result.id()).isEqualTo("sess-bob");
+        assertThat(result.username()).isEqualTo("bob");
+        verify(chatHistoryPort).createSession("bob");
+    }
+
+    @Test
     @DisplayName("loadRecentMessages deve retornar últimas 6 mensagens quando há mais")
     void loadRecentMessages_moreThanMax_returnsTruncated() {
         List<ChatMessage> msgs = new ArrayList<>();

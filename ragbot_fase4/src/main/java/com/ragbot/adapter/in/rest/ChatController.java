@@ -4,6 +4,7 @@ import com.ragbot.adapter.in.rest.dto.RestDtos;
 import com.ragbot.application.port.in.QueryChatUseCase;
 import com.ragbot.application.service.ChatHistoryService;
 import com.ragbot.domain.entity.Namespace;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -25,7 +26,7 @@ public class ChatController {
 
     @PostMapping
     public ResponseEntity<RestDtos.ChatResponse> chat(
-            @RequestBody RestDtos.ChatRequest request,
+            @Valid @RequestBody RestDtos.ChatRequest request,
             Authentication auth) {
 
         String username = auth != null ? auth.getName() : "anônimo";

@@ -4,16 +4,24 @@ import com.ragbot.domain.entity.Document;
 import com.ragbot.domain.entity.ChatSession;
 import com.ragbot.domain.entity.Namespace;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
 import java.time.Instant;
 import java.util.List;
 
 public class RestDtos {
 
+    /** Limite de caracteres da pergunta — controla custo de tokens e abuso do LLM. */
+    public static final int MAX_QUESTION_LENGTH = 2000;
+
     public record ChatRequest(
+            @NotBlank(message = "Pergunta é obrigatória")
+            @Size(max = MAX_QUESTION_LENGTH, message = "Pergunta deve ter no máximo " + MAX_QUESTION_LENGTH + " caracteres")
             String question,
-            String sessionId,
-            List<MessageDto> history,
-            String namespaceId       // #33: null → usa namespace padrão
+            @Size(max = 64) String sessionId,
+            @Size(max = 20) List<MessageDto> history,   // ignorado pelo backend (histórico vem do banco)
+            @Size(max = 64) String namespaceId          // #33: null → usa namespace padrão
     ) {}
 
     public record ChatResponse(String answer, String interactionId, String sessionId, List<String> sources) {}

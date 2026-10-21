@@ -26,6 +26,11 @@ public record User(
         return new User(id, username, email, passwordHash, role, newActive, createdAt, lastLogin);
     }
 
+    /** Cria uma cópia com novo hash de senha */
+    public User withPasswordHash(String newPasswordHash) {
+        return new User(id, username, email, newPasswordHash, role, active, createdAt, lastLogin);
+    }
+
     /** Cria uma cópia com lastLogin atualizado */
     public User withLastLogin(Instant loginTime) {
         return new User(id, username, email, passwordHash, role, active, createdAt, loginTime);

@@ -25,12 +25,19 @@ public class JwtTokenProvider {
 
     private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
 
+    /** HS256 exige chave de pelo menos 256 bits. */
+    static final int MIN_SECRET_BYTES = 32;
+
     private final SecretKey secretKey;
     private final long expirationSeconds;
 
     public JwtTokenProvider(
             @Value("${ragbot.security.jwt.secret}") String secret,
             @Value("${ragbot.security.jwt.expiration-seconds:86400}") long expirationSeconds) {
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException(
+                    "JWT_SECRET ausente ou fraco: mínimo " + MIN_SECRET_BYTES + " bytes (gere com: openssl rand -base64 48)");
+        }
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationSeconds = expirationSeconds;
     }

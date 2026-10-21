@@ -45,12 +45,13 @@ public class RagObservabilityAdapter implements RagObservabilityPort {
     }
 
     @Override
-    public void updateFeedback(String interactionId, boolean positive) {
+    public boolean updateFeedback(String interactionId, String username, boolean positive) {
         int rows = jdbc.update(
-                "UPDATE rag_interactions SET feedback_positive = ? WHERE id = ?",
-                positive, interactionId
+                "UPDATE rag_interactions SET feedback_positive = ? WHERE id = ? AND username = ?",
+                positive, interactionId, username
         );
-        if (rows == 0) log.warn("Interação não encontrada para feedback: {}", interactionId);
+        if (rows == 0) log.warn("Interação não encontrada para feedback do usuário: {}", interactionId);
+        return rows > 0;
     }
 
     @Override

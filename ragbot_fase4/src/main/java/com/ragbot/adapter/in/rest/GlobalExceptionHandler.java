@@ -11,7 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -76,7 +81,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<RestDtos.ErrorResponse> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException e) {
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
-                .body(new RestDtos.ErrorResponse("UNSUPPORTED_MEDIA_TYPE", e.getMessage()));
+                .body(new RestDtos.ErrorResponse("UNSUPPORTED_MEDIA_TYPE", "Content-Type não suportado."));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<RestDtos.ErrorResponse> handleUnreadable(HttpMessageNotReadableException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new RestDtos.ErrorResponse("INVALID_BODY", "Corpo da requisição inválido."));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<RestDtos.ErrorResponse> handleUploadTooLarge(MaxUploadSizeExceededException e) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new RestDtos.ErrorResponse("FILE_TOO_LARGE", "Arquivo excede o tamanho máximo permitido."));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<RestDtos.ErrorResponse> handleAccessDenied(AccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new RestDtos.ErrorResponse("FORBIDDEN", "Acesso negado."));
+    }
+
+    @ExceptionHandler({NoResourceFoundException.class, HttpRequestMethodNotSupportedException.class})
+    public ResponseEntity<RestDtos.ErrorResponse> handleNoRoute(Exception e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new RestDtos.ErrorResponse("NOT_FOUND", "Recurso não encontrado."));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
@@ -88,8 +117,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<RestDtos.ErrorResponse> handleGeneral(Exception e) {
+        // Detalhe completo só no log (correlacionado pelo requestId); o cliente recebe mensagem genérica
         log.error("Erro inesperado", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new RestDtos.ErrorResponse("INTERNAL_ERROR", e.getMessage()));
+                .body(new RestDtos.ErrorResponse("INTERNAL_ERROR", "Erro interno. Tente novamente mais tarde."));
     }
 }

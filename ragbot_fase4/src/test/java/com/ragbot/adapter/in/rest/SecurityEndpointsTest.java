@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   VIEWER  → apenas GET /api/chat POST /api/chat
  *   EDITOR  → VIEWER + POST /api/documents
  *   ADMIN   → EDITOR + DELETE /api/documents/{id} + /api/users/**
- *   Anônimo → apenas POST /api/auth/login e POST /api/auth/register
+ *   Anônimo → apenas POST /api/auth/login
  */
 @WebMvcTest({DocumentController.class, ChatController.class, UserController.class, AuthController.class})
 @Import(TestWebSecurityConfig.class)

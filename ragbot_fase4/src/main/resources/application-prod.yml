@@ -1,5 +1,12 @@
 server:
   port: ${PORT:8080}
+  # Erros fora do GlobalExceptionHandler (ex.: filtros) também não vazam detalhes
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-exception: false
+  # Confia em X-Forwarded-For apenas vindo do proxy (nginx/Railway) — usado no rate limit por IP
+  forward-headers-strategy: native
 
 spring:
   devtools:
@@ -19,8 +26,8 @@ spring:
     #   SPRING_DATASOURCE_USERNAME=postgres.<project-ref>
     #   SPRING_DATASOURCE_PASSWORD=<sua-senha>
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:ragbot}?sslmode=disable}
-    username: ${SPRING_DATASOURCE_USERNAME:${PGUSER:postgres}}
-    password: ${SPRING_DATASOURCE_PASSWORD:${PGPASSWORD:postgres}}
+    username: ${SPRING_DATASOURCE_USERNAME:${PGUSER}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${PGPASSWORD}}   # sem default: falha no startup se ausente
     hikari:
       maximum-pool-size: 2        # 2 conexões — economiza memória e slots no DB
       minimum-idle: 1
@@ -40,6 +47,13 @@ spring:
 ragbot:
   storage:
     dir: /data/documents          # volume persistente criado no Dockerfile
+  security:
+    jwt:
+      secret: ${JWT_SECRET}       # sem default: produção NUNCA usa o segredo de dev
+    admin-password: ${RAGBOT_ADMIN_PASSWORD:}      # troca a senha do admin do seed (V3) no startup
+    fail-on-default-admin-password: true           # não sobe com admin/Admin@123
+  cors:
+    allowed-origins: ${ALLOWED_ORIGINS:}   # vazio = apenas mesma origem
   async:
     core-pool-size: ${ASYNC_CORE_POOL:1}   # 1 thread sempre ativa (vs 2 no dev)
     max-pool-size: ${ASYNC_MAX_POOL:2}     # máx 2 simultâneas para não pressionar GC

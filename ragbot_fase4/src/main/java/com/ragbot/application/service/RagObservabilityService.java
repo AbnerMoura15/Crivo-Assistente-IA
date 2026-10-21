@@ -73,7 +73,8 @@ public class RagObservabilityService {
      * Chamado pelo FeedbackController (#9).
      */
     public void recordFeedback(String interactionId, boolean positive, String username) {
-        observabilityPort.updateFeedback(interactionId, positive);
+        // Só o autor da pergunta avalia a própria interação; IDs alheios são ignorados (sem revelar se existem)
+        if (!observabilityPort.updateFeedback(interactionId, username, positive)) return;
         log.info("Feedback registrado: interactionId={} positive={} user={}",
                 interactionId, positive, username);
     }

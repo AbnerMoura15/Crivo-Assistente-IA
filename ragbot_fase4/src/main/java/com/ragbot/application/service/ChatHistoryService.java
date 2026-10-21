@@ -33,11 +33,12 @@ public class ChatHistoryService {
 
     public ChatSession getOrCreateSession(String sessionId, String username) {
         if (sessionId != null && !sessionId.isBlank()) {
-            Optional<ChatSession> existing = chatHistoryPort.findSession(sessionId);
+            Optional<ChatSession> existing = chatHistoryPort.findSession(sessionId)
+                    .filter(s -> s.username().equals(username));   // nunca reutiliza sessão de outro usuário
             if (existing.isPresent()) {
                 return existing.get();
             }
-            log.warn("Sessão {} não encontrada para '{}', criando nova", sessionId, username);
+            log.warn("Sessão {} não encontrada (ou de outro usuário) para '{}', criando nova", sessionId, username);
         }
         return chatHistoryPort.createSession(username);
     }
