@@ -51,6 +51,8 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       # Segurança
       JWT_SECRET: ${JWT_SECRET}
+      RAGBOT_ADMIN_PASSWORD: ${RAGBOT_ADMIN_PASSWORD}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       # Armazenamento
       RAGBOT_STORAGE_DIR: /data/documents
     volumes:

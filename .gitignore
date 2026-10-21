@@ -1,0 +1,9 @@
+# IDE e ferramentas locais
+.idea/
+*.iml
+.claude/worktrees/
+.claire/
+
+# Logs locais (podem conter dados de execução)
+logs/
+*.log
