@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -21,7 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  * ┌─────────────────────────────────────┬──────────────────────────────┐
  * │ Endpoint                            │ Quem pode                    │
  * ├─────────────────────────────────────┼──────────────────────────────┤
- * │ POST /api/auth/**                   │ Todos (login/registro)       │
+ * │ POST /api/auth/login                │ Todos (sem auto-cadastro)    │
  * │ GET  /api/documents                 │ VIEWER, EDITOR, ADMIN        │
  * │ POST /api/documents                 │ EDITOR, ADMIN                │
  * │ DELETE /api/documents/{id}          │ ADMIN                        │
@@ -47,6 +48,9 @@ public class SecurityConfig {
         http
             // API REST não usa CSRF (stateless via JWT)
             .csrf(AbstractHttpConfigurer::disable)
+
+            // CORS pela configuração do WebConfig (preflight respondido antes da autenticação)
+            .cors(Customizer.withDefaults())
 
             // Stateless: sem sessão HTTP — o JWT é o estado
             .sessionManagement(session ->

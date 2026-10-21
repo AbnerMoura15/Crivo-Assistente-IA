@@ -51,10 +51,7 @@ ragbot:
     jwt:
       secret: ${JWT_SECRET}       # sem default: produção NUNCA usa o segredo de dev
     admin-password: ${RAGBOT_ADMIN_PASSWORD:}      # troca a senha do admin do seed (V3) no startup
-    fail-on-default-admin-password: true           # não sobe com admin/Admin@123
-  cors:
-    allowed-origins: ${ALLOWED_ORIGINS:}   # vazio = apenas mesma origem
-  async:
+    fail-on-default-admin-password: true           # não sobe com admin/Admin@123  async:
     core-pool-size: ${ASYNC_CORE_POOL:1}   # 1 thread sempre ativa (vs 2 no dev)
     max-pool-size: ${ASYNC_MAX_POOL:2}     # máx 2 simultâneas para não pressionar GC
     queue-capacity: ${ASYNC_QUEUE:10}      # fila menor para evitar acúmulo em memória

@@ -55,7 +55,7 @@ class DocumentControllerTest {
                 .thenReturn(new IngestDocumentUseCase.IngestResult("doc-1", 1, "PROCESSING"));
 
         MockMultipartFile file = new MockMultipartFile(
-                "file", "manual.pdf", MediaType.APPLICATION_PDF_VALUE, "pdf-content".getBytes());
+                "file", "manual.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-1.4 conteudo".getBytes());
 
         mockMvc.perform(multipart("/api/documents")
                         .file(file)
@@ -75,13 +75,66 @@ class DocumentControllerTest {
                 .thenReturn(new IngestDocumentUseCase.IngestResult("doc-2", 2, "PROCESSING"));
 
         MockMultipartFile file = new MockMultipartFile(
-                "file", "manual.pdf", MediaType.APPLICATION_PDF_VALUE, "novo-conteudo".getBytes());
+                "file", "manual.pdf", MediaType.APPLICATION_PDF_VALUE, "%PDF-1.7 novo-conteudo".getBytes());
 
         mockMvc.perform(multipart("/api/documents")
                         .file(file)
                         .with(csrf()))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.version").value(2));
+    }
+
+    @Test
+    @WithMockUser(username = "editor", roles = "EDITOR")
+    @DisplayName("upload com extensão fora da lista (.exe) retorna 422 e não ingere")
+    void uploadRejectsDisallowedExtension() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "virus.exe", MediaType.APPLICATION_PDF_VALUE, "%PDF-1.4 fake".getBytes());
+
+        mockMvc.perform(multipart("/api/documents").file(file).with(csrf()))
+                .andExpect(status().isUnprocessableEntity());
+        verifyNoInteractions(ingestUseCase);
+    }
+
+    @Test
+    @WithMockUser(username = "editor", roles = "EDITOR")
+    @DisplayName("upload .pdf cujo conteúdo não é PDF (tipo real diferente) retorna 422")
+    void uploadRejectsFakePdf() throws Exception {
+        byte[] exeHeader = {'M', 'Z', (byte) 0x90, 0, 3, 0, 0, 0};
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "manual.pdf", MediaType.APPLICATION_PDF_VALUE, exeHeader);
+
+        mockMvc.perform(multipart("/api/documents").file(file).with(csrf()))
+                .andExpect(status().isUnprocessableEntity());
+        verifyNoInteractions(ingestUseCase);
+    }
+
+    @Test
+    @WithMockUser(username = "editor", roles = "EDITOR")
+    @DisplayName("upload .csv binário retorna 422")
+    void uploadRejectsBinaryCsv() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "dados.csv", "text/csv", new byte[]{'a', 0, 'b', 0});
+
+        mockMvc.perform(multipart("/api/documents").file(file).with(csrf()))
+                .andExpect(status().isUnprocessableEntity());
+        verifyNoInteractions(ingestUseCase);
+    }
+
+    @Test
+    @WithMockUser(username = "editor", roles = "EDITOR")
+    @DisplayName("nome com caminho e markup é sanitizado; MIME vem da extensão, não do cliente")
+    void uploadSanitizesNameAndIgnoresClientMime() throws Exception {
+        when(ingestUseCase.ingest(anyString(), anyString(), any(), anyLong(), anyString()))
+                .thenReturn(new IngestDocumentUseCase.IngestResult("doc-9", 1, "PROCESSING"));
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "../../etc/<img src=x onerror=alert(1)>.csv", "application/x-msdownload",
+                "nome;idade\nana;30\n".getBytes());
+
+        mockMvc.perform(multipart("/api/documents").file(file).with(csrf()))
+                .andExpect(status().isAccepted());
+
+        verify(ingestUseCase).ingest(eq("img src=x onerror=alert(1).csv"), eq("text/csv"), any(), anyLong(), anyString());
     }
 
     @Test

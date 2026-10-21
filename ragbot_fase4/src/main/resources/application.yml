@@ -50,6 +50,9 @@ ragbot:
     jwt:
       secret: ${JWT_SECRET:ragbot-secret-key-troque-em-producao-min32!}
       expiration-seconds: ${JWT_EXPIRATION:86400}
+  # ── CORS: origens extras permitidas (vírgula). Vazio = só mesma origem ─────
+  cors:
+    allowed-origins: ${ALLOWED_ORIGINS:}
   # ── Rate Limiting (#5) ──────────────────────────────────────────────────────
   rate-limit:
     user-per-minute: ${RATE_USER_MIN:20}    # Requisições por minuto por usuário autenticado

@@ -26,7 +26,7 @@ import java.util.Map;
  * - Usuário autenticado: chave "user:<username>" → limite maior
  * - Requisição anônima: chave "ip:<ip>"         → limite menor
  *
- * Endpoints de autenticação (/api/auth/**) e estáticos são isentos.
+ * Health/actuator e estáticos são isentos. O login conta no limite anônimo por IP.
  * Retorna HTTP 429 com corpo JSON quando o limite é atingido.
  */
 @Component
@@ -79,18 +79,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return "ip:" + extractClientIp(request);
     }
 
+    /**
+     * NÃO lê X-Forwarded-For diretamente: o cliente poderia forjá-lo para escapar do limite.
+     * Atrás de proxy, server.forward-headers-strategy=native faz o Tomcat preencher
+     * getRemoteAddr() com o IP real somente quando o header vem de um proxy confiável.
+     */
     private String extractClientIp(HttpServletRequest request) {
-        // Verifica headers de proxy antes do IP direto
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 
+    /** /api/auth/login NÃO é isento: o limite anônimo por IP freia força bruta de senha. */
     private boolean isExempt(String path) {
-        return path.startsWith("/api/auth/")
-                || path.startsWith("/actuator/")
+        return path.startsWith("/actuator/")
                 || path.equals("/")
                 || path.endsWith(".html")
                 || path.endsWith(".css")

@@ -1045,16 +1045,16 @@ function renderDocsSidebar(docs) {
       ? `<span class="version-badge" style="background:rgba(255,107,107,.15);color:var(--red)">✕</span>`
       : '';
     const retryBtn = doc.processingStatus === 'FAILED'
-      ? `<button class="doc-delete" title="Tentar novamente" style="color:var(--yellow);background:rgba(246,201,14,.12);border:none;border-radius:6px;cursor:pointer;padding:4px 8px;font-size:14px" onclick="retryDoc('${doc.id}','${escHtml(doc.fileName)}')">↺</button>`
+      ? `<button class="doc-delete" title="Tentar novamente" style="color:var(--yellow);background:rgba(246,201,14,.12);border:none;border-radius:6px;cursor:pointer;padding:4px 8px;font-size:14px" onclick="retryDoc(${jsArg(doc.id)},${jsArg(doc.fileName)})">↺</button>`
       : '';
     return `<div class="doc-item">
       <div class="doc-icon ${isPdf?'pdf':'csv'}">${isPdf?'📄':'📊'}</div>
       <div class="doc-info">
-        <div class="doc-name" title="${doc.fileName}">${escHtml(doc.fileName)}${vBadge}${statusBadge}</div>
+        <div class="doc-name" title="${escHtml(doc.fileName)}">${escHtml(doc.fileName)}${vBadge}${statusBadge}</div>
         <div class="doc-meta">${formatSize(doc.fileSizeBytes)} · ${fmtDate(doc.ingestedAt)}</div>
       </div>
       ${retryBtn}
-      ${canDelete ? `<button class="doc-delete" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">✕</button>` : ''}
+      ${canDelete ? `<button class="doc-delete" onclick="deleteDoc(${jsArg(doc.id)},${jsArg(doc.fileName)})">✕</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -1072,10 +1072,10 @@ function renderDocsPanel() {
       ? `<span class="version-badge" style="background:rgba(255,107,107,.15);color:var(--red)">✕ Falhou</span>`
       : '';
     const histBtn = doc.hasHistory
-      ? `<button class="action-btn" onclick="viewVersionHistory('${doc.id}','${escHtml(doc.fileName)}')" title="Ver histórico de versões">📜 Versões</button>`
+      ? `<button class="action-btn" onclick="viewVersionHistory(${jsArg(doc.id)},${jsArg(doc.fileName)})" title="Ver histórico de versões">📜 Versões</button>`
       : '';
     const retryBtnPanel = doc.processingStatus === 'FAILED'
-      ? `<button class="action-btn" style="color:var(--yellow);border-color:var(--yellow)" onclick="retryDoc('${doc.id}','${escHtml(doc.fileName)}')">↺ Retentar</button>`
+      ? `<button class="action-btn" style="color:var(--yellow);border-color:var(--yellow)" onclick="retryDoc(${jsArg(doc.id)},${jsArg(doc.fileName)})">↺ Retentar</button>`
       : '';
     return `<div class="doc-item" style="background:var(--surface2);margin-bottom:6px;border-radius:8px;padding:12px">
       <div class="doc-icon ${isPdf?'pdf':'csv'}" style="width:34px;height:34px;font-size:15px">${isPdf?'📄':'📊'}</div>
@@ -1086,7 +1086,7 @@ function renderDocsPanel() {
       <div style="display:flex;gap:6px">
         ${histBtn}
         ${retryBtnPanel}
-        ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc('${doc.id}','${escHtml(doc.fileName)}')">🗑 Remover</button>` : ''}
+        ${canDelete ? `<button class="action-btn danger" onclick="deleteDoc(${jsArg(doc.id)},${jsArg(doc.fileName)})">🗑 Remover</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1542,7 +1542,7 @@ async function loadNamespacesView() {
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="clear-btn" onclick="changeNamespace('${ns.id}');showView('docs')">📂 Ver docs</button>
-        ${canDelete ? `<button class="clear-btn" style="border-color:var(--red);color:var(--red)" onclick="deleteNamespace('${ns.id}','${escHtml(ns.displayName)}')">🗑 Remover</button>` : ''}
+        ${canDelete ? `<button class="clear-btn" style="border-color:var(--red);color:var(--red)" onclick="deleteNamespace(${jsArg(ns.id)},${jsArg(ns.displayName)})">🗑 Remover</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1951,7 +1951,13 @@ function inlineMd(text) {
 
 // ══ UTILS ════════════════════════════════════════════════════════════════════
 function escHtml(t) {
-  return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Argumento seguro para onclick="fn(...)": string JS literal (JSON) + escape HTML do atributo.
+// Só escHtml não basta: o navegador decodifica &#39; antes de executar o JS.
+function jsArg(v) {
+  return escHtml(JSON.stringify(String(v ?? '')));
 }
 function formatSize(b) {
   if(b<1024) return b+'B'; if(b<1048576) return (b/1024).toFixed(1)+'KB';

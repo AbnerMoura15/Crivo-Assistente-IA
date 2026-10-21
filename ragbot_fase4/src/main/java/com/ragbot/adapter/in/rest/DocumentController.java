@@ -52,27 +52,29 @@ public class DocumentController {
             Authentication auth,
             HttpServletRequest request) throws IOException {
 
-        log.info("Upload recebido: {} ({} bytes) namespace={}",
-                file.getOriginalFilename(), file.getSize(), namespaceId);
+        log.info("Upload recebido: {} bytes namespace={}", file.getSize(), namespaceId);
+
+        UploadValidator.ValidatedUpload upload =
+                UploadValidator.validate(file.getOriginalFilename(), file.getSize(), file.getInputStream());
 
         IngestDocumentUseCase.IngestResult result = ingestUseCase.ingest(
-                file.getOriginalFilename(),
-                file.getContentType(),
-                file.getInputStream(),
+                upload.fileName(),
+                upload.mimeType(),
+                upload.content(),
                 file.getSize(),
                 namespaceId
         );
 
         String actor = auth != null ? auth.getName() : "anônimo";
         auditLogService.record(actor, AuditAction.DOCUMENT_UPLOAD, result.documentId(), "DOCUMENT",
-                "arquivo=" + file.getOriginalFilename() + " v" + result.version() + " ns=" + namespaceId,
+                "arquivo=" + upload.fileName() + " v" + result.version() + " ns=" + namespaceId,
                 request.getRemoteAddr());
 
         return ResponseEntity
                 .status(HttpStatus.ACCEPTED)
                 .body(new RestDtos.IngestResponse(
                         result.documentId(),
-                        "Arquivo '" + file.getOriginalFilename() + "' recebido (v" + result.version()
+                        "Arquivo '" + upload.fileName() + "' recebido (v" + result.version()
                         + "). Processando em background…",
                         result.version(),
                         result.processingStatus()
