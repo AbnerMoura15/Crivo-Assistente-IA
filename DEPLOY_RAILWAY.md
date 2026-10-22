@@ -1,4 +1,4 @@
-# Deploy RagBot — Railway + Supabase
+# Deploy Crivo — Railway + Supabase
 
 Guia de referência para replicar o deploy do zero.
 
@@ -48,7 +48,7 @@ railway --version   # deve mostrar 4.x
 2. Busque `vector`
 3. Clique em **Enable**
 
-> O RagBot usa embeddings de 3072 dimensões (Gemini). Sem pgvector o app não sobe.
+> O Crivo usa embeddings de 3072 dimensões (Gemini). Sem pgvector o app não sobe.
 
 ### Obter a URL de conexão
 1. **Settings** → **Database** → **Connection string**
@@ -65,7 +65,7 @@ railway --version   # deve mostrar 4.x
 
 ```powershell
 # No PowerShell, dentro da pasta do projeto:
-cd C:\ragbot_fase4\ragbot_fase4
+cd C:\ragbot_fase4   # raiz do repositório (onde fica o pom.xml)
 
 # Executar o script (bypass de execution policy apenas para esta sessão)
 Set-ExecutionPolicy Bypass -Scope Process

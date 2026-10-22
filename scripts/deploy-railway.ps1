@@ -7,7 +7,7 @@
 .HOW TO RUN
     1. Abra o PowerShell como usuario normal (nao precisa de Admin)
     2. Navegue ate a pasta do projeto:
-         cd C:\ragbot_fase4\ragbot_fase4
+         cd C:\ragbot_fase4   (raiz do repositorio, onde fica o pom.xml)
     3. Execute:
          Set-ExecutionPolicy Bypass -Scope Process; .\scripts\deploy-railway.ps1
 
