@@ -1,90 +1,103 @@
-# RAGBot — Assistente de Documentos com IA
+# Crivo
 
-Chatbot com arquitetura RAG (Retrieval-Augmented Generation) sobre documentos PDF e CSV.
-Construído com **Java 21 + Spring Boot 3**, arquitetura **hexagonal/clean** e **agnóstico ao provedor de IA**.
+Assistente que responde perguntas sobre documentos internos (PDF e CSV) usando RAG, com busca híbrida em PostgreSQL/pgvector e controle de acesso por perfil.
 
----
+**Resultado:** em uso interno, reduziu em 48% o tempo gasto respondendo dúvidas da produção.
 
-## Arquitetura
-
-```
-domain/          ← entidades e exceções puras (sem framework)
-application/
-  port/in/       ← use cases (interfaces)
-  port/out/      ← ports para serviços externos (interfaces)
-  service/       ← implementação dos use cases
-adapter/
-  in/rest/       ← controllers REST + DTOs
-  out/ai/        ← adapters de IA (Copilot, OpenAI, Anthropic...)
-  out/parser/    ← parsers de PDF e CSV
-  out/storage/   ← armazenamento de arquivos
-  out/vectorstore/ ← pgvector
-```
-
----
-
-## Pré-requisitos
-
-- Java 21+
-- Maven 3.9+
-- Docker e Docker Compose
+Stack: Java 21, Spring Boot 3.2, Spring Security (JWT), PostgreSQL 16 + pgvector, Flyway, Docker, JUnit 5, Mockito, Testcontainers.
 
 ---
 
 ## Como rodar
 
-### 1. Suba o banco de dados
+Pré-requisitos: Java 21, Maven 3.9 e Docker.
 
 ```bash
-docker-compose up -d
+docker compose up -d
+export GROQ_API_KEY=sua_chave_groq GOOGLE_API_KEY=sua_chave_google
+mvn spring-boot:run
 ```
 
-### 2. Configure as variáveis de ambiente
+Acesse `http://localhost:8080`. Em desenvolvimento, o usuário inicial é `admin` / `Admin@123` (criado pela migration V3). Em produção a aplicação não sobe com essa senha: defina `RAGBOT_ADMIN_PASSWORD` e as demais variáveis de `.env.example`.
 
-```bash
-export COPILOT_ENDPOINT=https://api.githubcopilot.com
-export COPILOT_TOKEN=seu_token_aqui
-export COPILOT_MODEL=gpt-4o
-export COPILOT_EMBEDDING_MODEL=text-embedding-3-small
+---
+
+## Provedores de IA
+
+| Uso | Provedor | Modelo |
+|---|---|---|
+| Geração de respostas | Groq | Llama 3.3 70B (`llama-3.3-70b-versatile`) |
+| Embeddings | Google Gemini | `gemini-embedding-001` (3072 dimensões) |
+
+Os provedores ficam atrás das portas `LlmPort` e `EmbeddingPort`. A seleção é feita por `ragbot.ai.provider` (padrão `groq`). A chamada ao LLM tem timeout, retry e backoff exponencial para erros 429/5xx.
+
+---
+
+## Fluxos
+
+### Ingestão de documento
+
+```mermaid
+sequenceDiagram
+    actor U as Usuário (EDITOR/ADMIN)
+    participant API as DocumentController
+    participant V as UploadValidator
+    participant S as Storage (disco + tabela documents)
+    participant W as AsyncIngestWorker
+    participant P as Parser PDF/CSV
+    participant E as Gemini (embeddings)
+    participant DB as PostgreSQL + pgvector
+
+    U->>API: POST /api/documents (multipart)
+    API->>V: extensão, tipo real do arquivo, nome
+    V-->>API: arquivo validado
+    API->>S: grava arquivo, status PROCESSING (nova versão se já existir)
+    API-->>U: 202 Accepted (documentId)
+    API-)W: processamento assíncrono
+    W->>P: extrai texto
+    W->>W: divide em chunks com sobreposição
+    W->>E: gera embedding de cada chunk
+    W->>DB: grava chunks + vetores + tsvector
+    W->>S: status READY (ou FAILED)
 ```
 
-Ou edite `src/main/resources/application.yml` diretamente.
+### Pergunta
 
-### 3. Execute a aplicação
+```mermaid
+sequenceDiagram
+    actor U as Usuário
+    participant API as ChatController
+    participant Q as QueryChatService
+    participant E as Gemini (embeddings)
+    participant DB as PostgreSQL + pgvector
+    participant L as Groq (Llama 3.3)
 
-```bash
-./mvnw spring-boot:run
-```
-
-### 4. Acesse a interface
-
-```
-http://localhost:8080
+    U->>API: POST /api/chat (JWT)
+    API->>API: rate limit, validação (máx. 2000 caracteres)
+    API->>Q: pergunta + sessão + namespace
+    Q->>Q: verifica cota mensal de tokens
+    Q->>E: embedding da pergunta
+    Q->>DB: busca híbrida (vetorial + full-text) no namespace
+    Q->>Q: re-ranking e score mínimo
+    Q->>Q: mascara dados pessoais (CPF, e-mail, telefone, valores)
+    Q->>L: regras + bloco <documentos> + histórico da sessão
+    L-->>Q: resposta
+    Q->>DB: histórico, interação (observabilidade), uso de tokens
+    Q-->>U: resposta + fontes
 ```
 
 ---
 
-## API REST
+## Decisões técnicas
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| `POST` | `/api/documents` | Upload de PDF ou CSV (multipart/form-data, campo `file`) |
-| `GET`  | `/api/documents` | Lista documentos indexados |
-| `DELETE` | `/api/documents/{id}` | Remove documento e seus chunks |
-| `POST` | `/api/chat` | Pergunta ao chatbot |
+**1. pgvector no próprio PostgreSQL, com busca híbrida, em vez de um banco vetorial dedicado.**
+Documentos, usuários, auditoria e vetores ficam no mesmo banco, com transação, backup e migrations únicos (Flyway). A busca combina similaridade vetorial com full-text (`tsvector`) em peso configurável, o que melhora perguntas com códigos, siglas e nomes próprios, onde só embeddings erram. Custo: escala vertical do Postgres; para volumes muito maiores, um índice vetorial dedicado pode ser reavaliado.
 
-### Exemplo de chat
+**2. Arquitetura hexagonal (ports and adapters).**
+O domínio e os casos de uso não conhecem Groq, Gemini, PDFBox ou JDBC; dependem de portas (`LlmPort`, `EmbeddingPort`, `VectorStorePort`, `DocumentParserPort`). Trocar de provedor de IA ou de armazenamento é escrever um adapter novo, sem mexer na regra de negócio, e os serviços são testados com mocks das portas. Custo: mais interfaces e classes que uma estrutura em camadas simples.
 
-```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "<sua-senha>"}' | jq -r .token)
-
-curl -X POST http://localhost:8080/api/chat \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Quais são os procedimentos de segurança?"}'
-```
+**3. Ingestão assíncrona em pool de threads local, sem fila externa.**
+O upload responde 202 imediatamente e o parsing/embedding roda em um `ThreadPoolTaskExecutor` limitado, com status `PROCESSING`/`READY`/`FAILED` e reprocessamento manual. Atende o volume atual sem adicionar broker de mensagens à infraestrutura. Custo: trabalhos em andamento se perdem se a instância reiniciar (ficam como `PROCESSING` e podem ser reenviados); com várias instâncias, uma fila passa a ser necessária.
 
 ---
 
@@ -94,80 +107,30 @@ curl -X POST http://localhost:8080/api/chat \
 
 | Área | Medida | Teste que prova |
 |---|---|---|
-| Autenticação | Sem auto-cadastro público; usuários são criados por ADMIN (`POST /api/users`). JWT HS256 com segredo obrigatório (≥ 32 bytes, sem default em prod). BCrypt custo 12. | `AuthControllerTest`, `JwtTokenProviderTest`, `ProdProfileConfigTest` |
-| Admin do seed | O admin criado pela migration V3 tem senha conhecida. Em prod o app **não sobe** enquanto ela não for trocada via `RAGBOT_ADMIN_PASSWORD`. | `DefaultAdminPasswordGuardTest` |
-| Autorização | Regras por perfil (VIEWER / EDITOR / ADMIN). Sessões de chat e feedback são restritos ao dono. | `SecurityEndpointsTest`, `ChatHistoryServiceTest`, `RagObservabilityAdapterTest` |
+| Autenticação | Sem auto-cadastro público; usuários são criados por ADMIN (`POST /api/users`). JWT HS256 com segredo obrigatório (mínimo 32 bytes, sem default em prod). BCrypt custo 12. | `AuthControllerTest`, `JwtTokenProviderTest`, `ProdProfileConfigTest` |
+| Admin do seed | O admin criado pela migration V3 tem senha conhecida. Em prod a aplicação não sobe enquanto ela não for trocada via `RAGBOT_ADMIN_PASSWORD`. | `DefaultAdminPasswordGuardTest` |
+| Autorização | Regras por perfil (VIEWER / EDITOR / ADMIN). Sessões de chat e feedback restritos ao dono. | `SecurityEndpointsTest`, `ChatHistoryServiceTest`, `RagObservabilityAdapterTest` |
 | Entrada | Pergunta com no máximo 2000 caracteres. Upload só `.pdf`/`.csv`, com tipo real conferido pelo conteúdo (`%PDF-`, texto sem NUL), nome sanitizado e limite de 10 MB em prod. | `ChatControllerTest`, `DocumentControllerTest` |
-| Custo / abuso | Rate limit por usuário (20/min, 500/dia) e por IP no login (5/min). `X-Forwarded-For` só é aceito vindo de proxy confiável. Cota mensal de tokens por usuário. | `RateLimitFilterTest`, `RateLimiterServiceTest`, `TokenUsageServiceTest` |
-| Prompt injection | Trechos dos documentos vão num bloco `<documentos>` delimitado. Um documento não consegue fechar o bloco, e o prompt manda tratar o conteúdo como dado, com um lembrete após o contexto. PII mascarada antes de ir à LLM. | `QueryChatServiceTest` |
+| Custo e abuso | Rate limit por usuário (20/min, 500/dia) e por IP no login (5/min). `X-Forwarded-For` só é aceito vindo de proxy confiável. Cota mensal de tokens por usuário. | `RateLimitFilterTest`, `RateLimiterServiceTest`, `TokenUsageServiceTest` |
+| Prompt injection | Trechos dos documentos vão em um bloco `<documentos>` delimitado; um documento não consegue fechar o bloco; o prompt manda tratar o conteúdo como dado, com lembrete após o contexto. Dados pessoais mascarados antes de ir ao LLM. | `QueryChatServiceTest` |
 | Erros e logs | A API não devolve stack trace nem mensagem interna (500 genérico). Logs não gravam o texto da pergunta nem trechos de documento. | `ChatControllerTest`, `QueryChatServiceTest` |
 | SQL | Todas as queries são parametrizadas (`JdbcTemplate` com `?`). | revisão de código |
-| CORS / front | CORS só para origens em `ALLOWED_ORIGINS` (vazio = mesma origem). O front escapa dados do usuário em HTML e em `onclick`. | `CorsTest`, `FrontendXssGuardTest` |
-| Configuração | Perfil `prod` sem DEBUG, sem detalhes no health, sem senha default de banco. Docker roda com usuário não-root, e no compose de prod o banco fica só na rede interna. | `ProdProfileConfigTest` |
-| Dependências | `mvn org.owasp:dependency-check-maven:check` (com `NVD_API_KEY`) falha com CVSS ≥ 7. | — |
+| CORS e front | CORS só para origens em `ALLOWED_ORIGINS` (vazio = mesma origem). O front escapa dados do usuário em HTML e em `onclick`. | `CorsTest`, `FrontendXssGuardTest` |
+| Configuração | Perfil `prod` sem DEBUG, sem detalhes no health, sem senha default de banco. Container com usuário não-root; no compose de prod o banco fica só na rede interna. | `ProdProfileConfigTest` |
+| Dependências | `mvn org.owasp:dependency-check-maven:check` (com `NVD_API_KEY`) falha com CVSS maior ou igual a 7. | - |
 
-Variáveis obrigatórias em produção: `JWT_SECRET`, `RAGBOT_ADMIN_PASSWORD` (no primeiro deploy), senha do banco, chaves de IA. Ver `.env.example`.
+Variáveis obrigatórias em produção: `JWT_SECRET`, `RAGBOT_ADMIN_PASSWORD` (no primeiro deploy), senha do banco e chaves de IA. Ver `.env.example`.
 
 ### Limites conhecidos
 
-- **Prompt injection é reduzido, não eliminado.** Nenhuma técnica atual impede 100% que um documento influencie a LLM. O impacto é limitado porque o bot não executa ações (só responde), mas um documento malicioso pode distorcer respostas. Restringir quem faz upload (EDITOR) é parte da defesa.
-- **Namespaces não são fronteira de confidencialidade.** Todo usuário autenticado consulta todos os namespaces. Para isolar dados entre áreas ou clientes é preciso ACL por namespace (fora do escopo atual).
-- **Rate limit em memória.** Vale para uma instância. Com várias réplicas, precisa de armazenamento compartilhado (ex.: Redis).
-- **Upload.** Não há antivírus nem sandbox de parsing. PDFs malformados ou muito grandes dentro do limite de 10 MB podem consumir CPU e memória.
-- **Banco.** A tabela `rag_interactions` guarda o texto das perguntas (para observabilidade). Defina retenção e acesso conforme a LGPD.
-- **JWT.** Não há revogação de token antes da expiração (24h por padrão). Desativar um usuário bloqueia novos logins, mas não tokens já emitidos.
-- **Spring Boot 3.2.x** não recebe mais correções gratuitas. Planejar migração para 3.4+/3.5.
+- **Prompt injection é reduzido, não eliminado.** Nenhuma técnica atual impede totalmente que um documento influencie o LLM. O impacto é limitado porque o assistente não executa ações, apenas responde; restringir upload a EDITOR faz parte da defesa.
+- **Namespaces não são fronteira de confidencialidade.** Todo usuário autenticado consulta todos os namespaces. Isolar dados entre áreas exige ACL por namespace.
+- **Rate limit em memória.** Vale para uma instância; com várias réplicas, precisa de armazenamento compartilhado.
+- **Upload.** Não há antivírus nem sandbox de parsing; PDFs malformados dentro do limite de 10 MB podem consumir CPU e memória.
+- **Banco.** A tabela `rag_interactions` guarda o texto das perguntas para observabilidade; defina retenção e acesso conforme a LGPD.
+- **JWT.** Não há revogação antes da expiração (24h por padrão); desativar um usuário bloqueia novos logins, não tokens já emitidos.
+- **Spring Boot 3.2.x** não recebe mais correções gratuitas; migração para 3.4+ planejada.
 
 ---
 
-## Trocar provedor de IA
-
-Basta mudar `ragbot.ai.provider` no `application.yml`:
-
-```yaml
-ragbot:
-  ai:
-    provider: openai   # ou: copilot | anthropic | azure
-```
-
-E criar um novo adapter em `adapter/out/ai/` implementando `LlmPort` e `EmbeddingPort`
-com `@ConditionalOnProperty(name = "ragbot.ai.provider", havingValue = "openai")`.
-
----
-
-## Integração futura com Microsoft Teams
-
-Para integrar ao Teams, crie um adapter em `adapter/in/teams/`:
-
-1. **Bot Framework SDK** para Java (Microsoft Bot Framework)
-2. Implemente um `TeamsMessageAdapter` que recebe mensagens do Teams e chama `QueryChatUseCase`
-3. Registre o bot no [Azure Bot Service](https://portal.azure.com)
-4. Configure o manifesto do app Teams com o endpoint do seu bot
-
-O core da aplicação **não muda nada** — só um novo adapter de entrada.
-
----
-
-## Estrutura de pacotes completa
-
-```
-src/main/java/com/ragbot/
-├── RagBotApplication.java
-├── config/
-│   ├── AppConfig.java
-│   └── WebConfig.java
-├── domain/
-│   ├── entity/  Document, Chunk, ChatMessage
-│   └── exception/ UnsupportedDocumentTypeException, DocumentNotFoundException
-├── application/
-│   ├── port/in/  IngestDocumentUseCase, QueryChatUseCase, ListDocumentsUseCase
-│   ├── port/out/ EmbeddingPort, LlmPort, VectorStorePort, DocumentParserPort, DocumentStoragePort
-│   └── service/  IngestDocumentService, QueryChatService, ListDocumentsService, ChunkingStrategy
-└── adapter/
-    ├── in/rest/  DocumentController, ChatController, GlobalExceptionHandler, RestDtos
-    └── out/
-        ├── ai/copilot/   CopilotLlmAdapter, CopilotEmbeddingAdapter
-        ├── parser/       PdfParserAdapter, CsvParserAdapter
-        ├── storage/      LocalDocumentStorageAdapter
-        └── vectorstore/  PgVectorStoreAdapter
-```
+Desenvolvido com apoio do Claude Code; decisões de arquitetura e revisão são minhas.

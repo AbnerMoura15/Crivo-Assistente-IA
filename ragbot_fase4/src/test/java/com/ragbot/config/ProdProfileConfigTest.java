@@ -4,6 +4,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
 import java.util.Properties;
@@ -25,6 +27,24 @@ class ProdProfileConfigTest {
         YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
         yaml.setResources(new ClassPathResource("application-prod.yml"));
         prod = yaml.getObject();
+    }
+
+    @Test
+    @DisplayName("profile prod resolve ragbot.async.* (core=1, max=2, fila=10)")
+    void asyncPoolResolvesInProdProfile() throws Exception {
+        // Mesma precedência do Spring Boot: application-prod.yml sobrescreve application.yml.
+        // Sem variáveis de ambiente, para validar os defaults declarados no arquivo.
+        StandardEnvironment env = new StandardEnvironment();
+        env.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
+        loader.load("prod", new ClassPathResource("application-prod.yml")).forEach(env.getPropertySources()::addLast);
+        loader.load("base", new ClassPathResource("application.yml")).forEach(env.getPropertySources()::addLast);
+
+        assertThat(env.getProperty("ragbot.async.core-pool-size", Integer.class)).isEqualTo(1);
+        assertThat(env.getProperty("ragbot.async.max-pool-size", Integer.class)).isEqualTo(2);
+        assertThat(env.getProperty("ragbot.async.queue-capacity", Integer.class)).isEqualTo(10);
+        // regressão: as chaves não podem ter "vazado" para dentro de ragbot.security
+        assertThat(prod.getProperty("ragbot.security.core-pool-size")).isNull();
     }
 
     @Test

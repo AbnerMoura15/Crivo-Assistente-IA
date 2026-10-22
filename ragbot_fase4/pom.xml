@@ -8,7 +8,7 @@
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.2.12</version>
     </parent>
-    <groupId>com.suaempresa</groupId>
+    <groupId>com.abnermoura</groupId>
     <artifactId>ragbot</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>RAGBot - Chatbot com IA sobre documentos</name>
